@@ -1,4 +1,4 @@
-# Soundusic
+# MusicVantage2
 
 App musicale che riproduce musica da YouTube usando yt-dlp. Web + iOS.
 
@@ -41,7 +41,7 @@ cd ios && npx expo start
 ### 1. Connessione SSH
 
 ```bash
-ssh root@<IP_VPS>
+ssh ubuntu@<IP_VPS>
 ```
 
 ### 2. Installa dipendenze di sistema
@@ -60,17 +60,17 @@ systemctl start postgresql
 systemctl enable postgresql
 
 # Crea database e utente
-sudo -u postgres psql -c "CREATE USER soundusic WITH PASSWORD 'ScegliUnaPasswordFortepoiCambiala';"
-sudo -u postgres psql -c "CREATE DATABASE soundusic OWNER soundusic;"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE soundusic TO soundusic;"
+sudo -u postgres psql -c "CREATE USER musicvantage2 WITH PASSWORD 'ScegliUnaPasswordFortepoiCambiala';"
+sudo -u postgres psql -c "CREATE DATABASE musicvantage2 OWNER musicvantage2;"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE musicvantage2 TO musicvantage2;"
 ```
 
 ### 4. Prepara l'app
 
 ```bash
 cd /opt
-git clone <URL_DEL_TUO_REPO> soundusic
-cd soundusic
+git clone https://github.com/Cioccolatin0/musicvantage2.git
+cd musicvantage2
 
 # Installa dipendenze
 cd server && npm install
@@ -79,7 +79,7 @@ cd ..
 
 # Crea file .env del server
 cat > server/.env << EOF
-DATABASE_URL=postgresql://soundusic:ScegliUnaPasswordFortepoiCambiala@localhost:5432/soundusic
+DATABASE_URL=postgresql://musicvantage2:ScegliUnaPasswordFortepoiCambiala@localhost:5432/musicvantage2
 PORT=3001
 EOF
 
@@ -92,7 +92,7 @@ cd ..
 
 ```bash
 npm install -g pm2
-pm2 start server/server.js --name soundusic -i 1 --wait-ready
+pm2 start server/server.js --name musicvantage2 -i 1 --wait-ready
 pm2 save
 pm2 startup   # Segui le istruzioni per abilitare l'avvio automatico
 ```
@@ -100,7 +100,7 @@ pm2 startup   # Segui le istruzioni per abilitare l'avvio automatico
 ### 6. Configura Nginx (reverse proxy)
 
 ```bash
-cat > /etc/nginx/sites-available/soundusic << 'EOF'
+cat > /etc/nginx/sites-available/musicvantage2 << 'EOF'
 server {
     listen 80;
     server_name tuo-dominio.com;
@@ -119,7 +119,7 @@ server {
 }
 EOF
 
-ln -s /etc/nginx/sites-available/soundusic /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/musicvantage2 /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 ```
 

@@ -1,7 +1,7 @@
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://soundusic:soundusic@localhost:5432/soundusic'
+  connectionString: process.env.DATABASE_URL || 'postgresql://musicvantage2:musicvantage2@localhost:5432/musicvantage2'
 });
 
 pool.on('error', err => {

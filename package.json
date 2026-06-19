@@ -1,8 +1,8 @@
 {
-  "name": "soundusic",
+  "name": "musicvantage2",
   "version": "1.0.0",
   "private": true,
-  "description": "Soundusic - Music streaming app powered by yt-dlp",
+  "description": "MusicVantage2 - Music streaming app powered by yt-dlp",
   "scripts": {
     "start": "cd server && npm start",
     "web": "cd web && npm run dev",
