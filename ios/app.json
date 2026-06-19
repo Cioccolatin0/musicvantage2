@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Soundusic",
+    "slug": "soundusic",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0a0a0a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.soundusic.app",
+      "infoPlist": {
+        "UIBackgroundModes": ["audio"]
+      }
+    },
+    "plugins": [
+      "expo-av"
+    ]
+  }
+}

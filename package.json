@@ -1,0 +1,12 @@
+{
+  "name": "soundusic",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Soundusic - Music streaming app powered by yt-dlp",
+  "scripts": {
+    "start": "cd server && npm start",
+    "web": "cd web && npm run dev",
+    "ios": "cd ios && npm start",
+    "install:all": "cd server && npm install && cd ../web && npm install && cd ../ios && npm install"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "soundusic-server",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.0",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.22.0",
+    "ytdl-core": "^4.11.5"
+  }
+}
