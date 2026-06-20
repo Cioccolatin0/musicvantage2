@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { IconPrev, IconPlay, IconPause, IconNext, IconShuffle, IconRepeat, IconRepeatOne, IconLyrics, IconQueue, IconAdd, IconHeart, IconHeartFilled, IconVolume, IconList } from './Icons';
+import { IconPrev, IconPlay, IconPause, IconNext, IconShuffle, IconRepeat, IconRepeatOne, IconLyrics, IconQueue, IconAdd, IconHeart, IconHeartFilled, IconVolume, IconList, IconMusicVideo, IconMusicNote } from './Icons';
 import { formatDuration } from './utils';
 
 import { IconRefresh } from './Icons';
@@ -7,7 +7,8 @@ import { IconRefresh } from './Icons';
 export default function PlayerBar({
   currentTrack, playing, loadingStream, streamError, currentTime, duration, shuffle, repeat,
   togglePlay, playPrev, playNext, retryStream, handleProgressClick, volume, setVolume,
-  onToggleShuffle, onToggleRepeat, onOpenLyrics, onOpenQueue, onOpenPlaylists, liked, onToggleLike
+  onToggleShuffle, onToggleRepeat, onOpenLyrics, onOpenQueue, onOpenPlaylists, liked, onToggleLike,
+  playMode, onToggleMode
 }) {
   const progressRef = useRef(null);
   const volumeRef = useRef(null);
@@ -83,6 +84,9 @@ export default function PlayerBar({
               <div className="volume-fill" style={{ width: `${volume * 100}%` }} />
             </div>
           </div>
+          <button className="icon-btn" onClick={onToggleMode} title={playMode === 'music' ? 'Show video' : 'Audio only'}>
+            {playMode === 'music' ? <IconMusicNote size={18} /> : <IconMusicVideo size={18} />}
+          </button>
         </div>
       </div>
     </div>

@@ -2,7 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { search, getVideoInfo, getStreamUrl } = require('./ytdlp');
+const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics } = require('./ytmusic');
+const ytdlp = require('./ytdlp');
 const auth = require('./auth');
 
 const app = express();
@@ -23,8 +24,13 @@ app.get('/api/search', async (req, res) => {
     const q = req.query.q;
     const type = req.query.type || 'all';
     if (!q) return res.status(400).json({ error: 'Query required' });
-    req.setTimeout(120000);
-    const results = await search(q, type);
+    req.setTimeout(30000);
+    let results;
+    try {
+      results = await ytMusicSearch(q, type);
+    } catch {
+      results = await ytdlp.search(q, type);
+    }
     res.json(results);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -33,17 +39,32 @@ app.get('/api/search', async (req, res) => {
 
 app.get('/api/info/:id', async (req, res) => {
   try {
-    const info = await getVideoInfo(req.params.id);
+    let info;
+    try {
+      info = await ytMusicInfo(req.params.id);
+    } catch {
+      info = await ytdlp.getVideoInfo(req.params.id);
+    }
     res.json(info);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+app.get('/api/lyrics/:id', async (req, res) => {
+  try {
+    const lyrics = await getLyrics(req.params.id);
+    if (lyrics) res.json({ lyrics });
+    else res.status(404).json({ error: 'Lyrics not found' });
+  } catch {
+    res.status(500).json({ error: 'Lyrics error' });
+  }
+});
+
 app.get('/api/stream/:id', async (req, res) => {
   try {
     req.setTimeout(60000);
-    const url = await getStreamUrl(req.params.id);
+    const url = await ytdlp.getStreamUrl(req.params.id);
     if (url) res.redirect(url);
     else res.status(404).json({ error: 'Stream not found' });
   } catch (err) {
@@ -53,7 +74,7 @@ app.get('/api/stream/:id', async (req, res) => {
 
 app.get('/api/stream/url/:id', async (req, res) => {
   try {
-    const url = await getStreamUrl(req.params.id);
+    const url = await ytdlp.getStreamUrl(req.params.id);
     if (url) res.json({ url });
     else res.status(404).json({ error: 'Stream not found' });
   } catch (err) {
@@ -66,7 +87,7 @@ app.post('/api/stream/prefetch', async (req, res) => {
   if (!ids || !Array.isArray(ids)) return res.json({ ok: false });
   res.json({ ok: true });
   for (const id of ids) {
-    getStreamUrl(id).catch(() => {});
+    ytdlp.getStreamUrl(id).catch(() => {});
   }
 });
 

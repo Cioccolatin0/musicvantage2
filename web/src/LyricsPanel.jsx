@@ -1,7 +1,7 @@
 import React from 'react';
 import { IconClose } from './Icons';
 
-export default function LyricsPanel({ track, onClose }) {
+export default function LyricsPanel({ track, lyrics, onClose }) {
   return (
     <div className="panel-overlay" onClick={onClose}>
       <div className="panel lyrics-panel" onClick={e => e.stopPropagation()}>
@@ -19,10 +19,13 @@ export default function LyricsPanel({ track, onClose }) {
               </div>
             </div>
             <div className="lyrics-text">
-              <p className="lyrics-placeholder">
-                No lyrics available for this track.<br />
-                Lyrics will appear here when available.
-              </p>
+              {lyrics ? (
+                <pre className="lyrics-text-pre">{lyrics}</pre>
+              ) : (
+                <p className="lyrics-placeholder">
+                  No lyrics available for this track.
+                </p>
+              )}
             </div>
           </div>
         ) : (

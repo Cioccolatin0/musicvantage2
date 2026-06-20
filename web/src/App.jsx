@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { search, getStreamUrl, getStreamUrlDirect, prefetchStreamUrls } from './api';
+import { search, prefetchStreamUrls, getLyrics } from './api';
 import { formatDuration } from './utils';
 import Sidebar from './Sidebar';
 import PlayerBar from './PlayerBar';
@@ -36,11 +36,19 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loadingTrack, setLoadingTrack] = useState(null);
   const [adminLoggedIn, setAdminLoggedIn] = useState(false);
+  const [playMode, setPlayMode] = useState('music');
+  const [youtubeReady, setYoutubeReady] = useState(false);
+  const [lyrics, setLyrics] = useState(null);
 
   const audioRef = useRef(null);
+  const ytPlayerRef = useRef(null);
   const progressRef = useRef(null);
   const streamCache = useRef({});
   const startedRef = useRef(false);
+  const repeatRef = useRef(repeat);
+  const playNextRef = useRef(playNext);
+  repeatRef.current = repeat;
+  playNextRef.current = playNext;
 
   const doSearch = useCallback(async (q, f) => {
     if (!q.trim()) return;
@@ -90,8 +98,12 @@ function App() {
     }
   }, [getNextTrack]);
 
-  const playTrack = useCallback(async (track, trackList) => {
+  const playTrack = useCallback((track, trackList) => {
     if (trackList) setQueue(trackList);
+    if (ytPlayerRef.current && currentTrack?.id === track.id) {
+      try { ytPlayerRef.current.seekTo(0); ytPlayerRef.current.playVideo(); } catch {}
+      return;
+    }
     setCurrentTrack(track);
     setLoadingTrack(track.id);
     setPlaying(false);
@@ -99,101 +111,118 @@ function App() {
     setStreamError(false);
     setCurrentTime(0);
     setDuration(0);
+    setLyrics(null);
     setLiked(false);
-    startedRef.current = false;
-
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const cached = streamCache.current[track.id];
-    if (cached) {
-      audio.src = cached;
-      audio.load();
-      audio.play().then(() => {
-        setPlaying(true);
-        setLoadingStream(false);
-        setLoadingTrack(null);
-        startedRef.current = true;
-      }).catch(() => {
-        setLoadingStream(false);
-        setLoadingTrack(null);
-        setStreamError(true);
-      });
-      return;
-    }
-
-    const directUrl = getStreamUrlDirect(track.id);
-    audio.src = directUrl;
-    audio.load();
-    audio.play().then(() => {
-      setPlaying(true);
-      startedRef.current = true;
-    }).catch(() => {});
-
-    const url = await getStreamUrl(track.id);
-    let gotUrl = false;
-    if (url) {
-      gotUrl = true;
-      streamCache.current[track.id] = url;
-      if (!startedRef.current && audio.src === directUrl) {
-        audio.src = url;
-        audio.load();
-        audio.play().then(() => {
-          setPlaying(true);
-          startedRef.current = true;
-          setStreamError(false);
-        }).catch(() => {});
-      }
-    }
-    setLoadingStream(false);
-    setLoadingTrack(null);
-    if (!gotUrl) setStreamError(true);
-  }, []);
+  }, [currentTrack?.id]);
 
   const retryStream = useCallback(() => {
-    if (!currentTrack) return;
+    if (!currentTrack || !ytPlayerRef.current) return;
     setStreamError(false);
     setLoadingStream(true);
-    startedRef.current = false;
-
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const cached = streamCache.current[currentTrack.id];
-    if (cached) {
-      audio.src = cached;
-      audio.load();
-      audio.play().then(() => { setPlaying(true); setLoadingStream(false); startedRef.current = true; }).catch(() => setLoadingStream(false));
-      return;
+    try {
+      ytPlayerRef.current.loadVideoById(currentTrack.id);
+    } catch {
+      setLoadingStream(false);
     }
-
-    const directUrl = getStreamUrlDirect(currentTrack.id);
-    audio.src = directUrl;
-    audio.load();
-    audio.play().then(() => { setPlaying(true); startedRef.current = true; }).catch(() => {});
-
-    getStreamUrl(currentTrack.id).then(url => {
-      if (url) {
-        streamCache.current[currentTrack.id] = url;
-        if (!startedRef.current && audio.src === directUrl) {
-          audio.src = url;
-          audio.load();
-          audio.play().then(() => { setPlaying(true); startedRef.current = true; setStreamError(false); }).catch(() => {});
-        }
-      }
-    }).catch(() => {}).finally(() => setLoadingStream(false));
   }, [currentTrack]);
 
   useEffect(() => {
     if (playing) preloadNextStream();
   }, [playing, currentTrack?.id, preloadNextStream]);
 
+  useEffect(() => {
+    if (window.YT && window.YT.Player) {
+      setYoutubeReady(true);
+      return;
+    }
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    const first = document.getElementsByTagName('script')[0];
+    first.parentNode.insertBefore(tag, first);
+    window.onYouTubeIframeAPIReady = () => setYoutubeReady(true);
+    return () => { window.onYouTubeIframeAPIReady = null; };
+  }, []);
+
+  useEffect(() => {
+    if (!youtubeReady || !currentTrack) return;
+    setLoadingStream(true);
+    setStreamError(false);
+    if (ytPlayerRef.current) {
+      try { ytPlayerRef.current.destroy(); } catch {}
+      ytPlayerRef.current = null;
+    }
+    setTimeout(() => {
+      try {
+        ytPlayerRef.current = new YT.Player('yt-player', {
+          videoId: currentTrack.id,
+          height: playMode === 'video' ? '240' : '0',
+          width: playMode === 'video' ? '100%' : '0',
+          playerVars: {
+            autoplay: 1, modestbranding: 1, rel: 0,
+            controls: 0, playsinline: 1, fs: 0,
+          },
+          events: {
+            onReady: (e) => { e.target.playVideo(); },
+            onStateChange: (e) => {
+              if (e.data === YT.PlayerState.PLAYING) {
+                setPlaying(true);
+                setLoadingStream(false);
+                setLoadingTrack(null);
+                setStreamError(false);
+              } else if (e.data === YT.PlayerState.PAUSED) {
+                setPlaying(false);
+              } else if (e.data === YT.PlayerState.ENDED) {
+                setPlaying(false);
+                if (repeatRef.current === 'one') {
+                  try { e.target.seekTo(0); e.target.playVideo(); } catch {}
+                } else {
+                  playNextRef.current();
+                }
+              } else if (e.data === YT.PlayerState.CUED) {
+                setLoadingStream(false);
+              }
+            },
+            onError: () => {
+              setLoadingStream(false);
+              setLoadingTrack(null);
+              setStreamError(true);
+            }
+          }
+        });
+      } catch {
+        setLoadingStream(false);
+        setLoadingTrack(null);
+        setStreamError(true);
+      }
+    }, 100);
+  }, [currentTrack?.id, youtubeReady, playMode]);
+
+  useEffect(() => {
+    if (!playing) return;
+    const interval = setInterval(() => {
+      try {
+        const p = ytPlayerRef.current;
+        if (p && p.getCurrentTime) {
+          setCurrentTime(p.getCurrentTime() || 0);
+          setDuration(p.getDuration() || 0);
+        }
+      } catch {}
+    }, 250);
+    return () => clearInterval(interval);
+  }, [playing, currentTrack?.id]);
+
+  useEffect(() => {
+    if (!currentTrack || !playing) return;
+    getLyrics(currentTrack.id).then(l => setLyrics(l)).catch(() => {});
+  }, [currentTrack?.id]);
+
   const togglePlay = () => {
-    const audio = audioRef.current;
-    if (!audio || loadingStream) return;
-    if (playing) { audio.pause(); setPlaying(false); }
-    else if (streamError) retryStream();
-    else audio.play().then(() => setPlaying(true)).catch(() => {});
+    const p = ytPlayerRef.current;
+    if (!p || loadingStream) return;
+    try {
+      if (playing) { p.pauseVideo(); }
+      else { p.playVideo(); }
+    } catch {}
   };
 
   const playNext = useCallback(() => {
@@ -207,36 +236,24 @@ function App() {
     if (idx > 0) playTrack(queue[idx - 1], queue);
   };
 
-  const handleTimeUpdate = () => {
-    const audio = audioRef.current;
-    if (audio) {
-      setCurrentTime(audio.currentTime);
-      setDuration(audio.duration || 0);
-    }
-  };
-
-  const handleEnded = () => {
-    if (repeat === 'one') {
-      const audio = audioRef.current;
-      if (audio) { audio.currentTime = 0; audio.play().catch(() => {}); }
-    } else playNext();
-  };
-
-  const handleAudioError = () => {
-    setLoadingStream(false);
-  };
+  const handleTimeUpdate = () => {};
+  const handleEnded = () => {};
+  const handleAudioError = () => {};
 
   const handleProgressClick = (e) => {
-    const audio = audioRef.current;
+    const p = ytPlayerRef.current;
     const bar = progressRef.current;
-    if (!audio || !bar) return;
-    const rect = bar.getBoundingClientRect();
-    audio.currentTime = ((e.clientX - rect.left) / rect.width) * (audio.duration || 0);
+    if (!p || !bar) return;
+    try {
+      const rect = bar.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      const d = p.getDuration() || 0;
+      p.seekTo(pct * d, true);
+    } catch {}
   };
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (audio) audio.volume = volume;
+    try { if (ytPlayerRef.current?.setVolume) ytPlayerRef.current.setVolume(volume * 100); } catch {}
   }, [volume]);
 
   const toggleShuffle = () => setShuffle(s => !s);
@@ -536,6 +553,7 @@ function App() {
           repeat={repeat}
           volume={volume}
           liked={liked}
+          playMode={playMode}
           togglePlay={togglePlay}
           playPrev={playPrev}
           playNext={playNext}
@@ -548,6 +566,7 @@ function App() {
           onOpenQueue={() => setShowQueue(true)}
           onOpenPlaylists={() => setShowPlaylists(true)}
           onToggleLike={() => setLiked(l => !l)}
+          onToggleMode={() => setPlayMode(m => m === 'music' ? 'video' : 'music')}
         />
       )}
 
@@ -556,14 +575,23 @@ function App() {
       )}
 
       {showLyrics && (
-        <LyricsPanel track={currentTrack} onClose={() => setShowLyrics(false)} />
+        <LyricsPanel track={currentTrack} lyrics={lyrics} onClose={() => setShowLyrics(false)} />
       )}
 
       {showPlaylists && (
         <PlaylistsPanel playlists={playlists} currentTrack={currentTrack} onAddToPlaylist={addToPlaylist} onCreatePlaylist={createPlaylist} onPlayTrack={playTrack} onClose={() => setShowPlaylists(false)} />
       )}
 
-      <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onEnded={handleEnded} onLoadedMetadata={handleTimeUpdate} onError={handleAudioError} />
+      <div id="yt-player" style={{
+        position: 'fixed', bottom: playMode === 'video' ? '90px' : '-9999px',
+        right: '10px', zIndex: 100,
+        width: playMode === 'video' ? '360px' : '1px',
+        height: playMode === 'video' ? '203px' : '1px',
+        opacity: playMode === 'video' ? 1 : 0.01,
+        transition: 'all 0.3s ease'
+      }} />
+      <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onEnded={handleEnded} onLoadedMetadata={handleTimeUpdate} onError={handleAudioError}
+        style={{ display: 'none' }} />
     </div>
   );
 }

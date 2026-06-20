@@ -991,6 +991,19 @@ input { font: inherit; color: inherit; }
   line-height: 1.8;
 }
 
+.lyrics-text-pre {
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: var(--text1);
+  max-height: 60vh;
+  overflow-y: auto;
+  width: 100%;
+  text-align: left;
+}
+
 /* === IMPORT VIEW === */
 .import-view { padding: 8px 0; }
 

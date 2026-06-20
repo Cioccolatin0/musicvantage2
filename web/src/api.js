@@ -57,6 +57,13 @@ export async function prefetchStreamUrls(ids) {
   }).catch(() => {});
 }
 
+export async function getLyrics(id) {
+  const res = await authFetch(`${API}/lyrics/${id}`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.lyrics;
+}
+
 // === Admin API ===
 let adminToken = null;
 
