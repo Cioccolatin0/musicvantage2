@@ -6,7 +6,7 @@ const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 
 const memCache = {};
-const CACHE_TTL = 6 * 60 * 60 * 1000;
+const CACHE_TTL = 1 * 60 * 60 * 1000;
 const MEM_TTL = 5 * 60 * 1000;
 
 const pending = {};
@@ -50,7 +50,7 @@ if (process.env.YT_PROXY) {
   BASE_ARGS.push('--proxy', process.env.YT_PROXY);
 }
 
-function runYtDlp(args, timeout = 30000) {
+function execYtDlp(args, timeout = 30000) {
   return new Promise((resolve, reject) => {
     const extraArgs = [];
     if (!process.env.YT_PROXY) {
@@ -91,6 +91,19 @@ function runYtDlp(args, timeout = 30000) {
       reject(err);
     });
   });
+}
+
+async function runYtDlp(args, timeout = 30000) {
+  const usingRotation = !process.env.YT_PROXY && process.env.YT_PROXY_LIST;
+  const maxRetries = usingRotation ? parseInt(process.env.YT_PROXY_RETRIES || '3', 10) : 1;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await execYtDlp(args, timeout);
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+    }
+  }
 }
 
 async function dedupedRun(key, runner) {
@@ -243,4 +256,4 @@ function warmup() {
 
 warmup();
 
-module.exports = { search, getStreamUrl, getVideoInfo, runYtDlp, cacheSet, cacheGet, dedupedRun };
+module.exports = { search, getStreamUrl, getVideoInfo, runYtDlp, execYtDlp, cacheSet, cacheGet, dedupedRun };
