@@ -24,15 +24,40 @@ function getYtDlpPath() {
 
 const YTDLP = getYtDlpPath();
 
+function resolveProxy() {
+  const single = process.env.YT_PROXY;
+  if (single) return single;
+  const list = process.env.YT_PROXY_LIST;
+  if (list) {
+    const proxies = list.split(',').map(s => s.trim()).filter(Boolean);
+    if (proxies.length) return proxies[Math.floor(Math.random() * proxies.length)];
+  }
+  return null;
+}
+
 const BASE_ARGS = [
   '--no-warnings', '--no-check-certificates',
   '--socket-timeout', '15',
   '--extractor-retries', '1'
 ];
 
+const cookiesFile = process.env.YT_COOKIES_FILE;
+if (cookiesFile && fs.existsSync(cookiesFile)) {
+  BASE_ARGS.push('--cookies', cookiesFile);
+}
+
+if (process.env.YT_PROXY) {
+  BASE_ARGS.push('--proxy', process.env.YT_PROXY);
+}
+
 function runYtDlp(args, timeout = 30000) {
   return new Promise((resolve, reject) => {
-    const allArgs = [...BASE_ARGS, ...args];
+    const extraArgs = [];
+    if (!process.env.YT_PROXY) {
+      const p = resolveProxy();
+      if (p) extraArgs.push('--proxy', p);
+    }
+    const allArgs = [...BASE_ARGS, ...extraArgs, ...args];
     const child = spawn(YTDLP, allArgs, { windowsHide: true });
     let stdout = '';
     let stderr = '';

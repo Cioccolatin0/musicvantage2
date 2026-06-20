@@ -1,0 +1,14 @@
+{
+  "config": {
+    "adminPassword": "3a87718a"
+  },
+  "apps": [
+    {
+      "name": "web-ui",
+      "key": "ba037231-79e6-4150-92b8-d7be6f4f8ed8",
+      "created": 1781897684474,
+      "revoked": false
+    }
+  ],
+  "playlists": []
+}
