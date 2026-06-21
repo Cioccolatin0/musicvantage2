@@ -26,38 +26,65 @@ async function getInnertube() {
   return initPromise;
 }
 
+function thumbUrl(item) {
+  const t = item.thumbnail;
+  if (Array.isArray(t) && t.length > 0) return t[0].url?.replace('w120-h120', 'hqdefault');
+  if (t && t.url) return t.url.replace('w120-h120', 'hqdefault');
+  return `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
+}
+
+function getArtist(item) {
+  if (item.artists && item.artists.length > 0) return item.artists[0].name;
+  if (item.authors && item.authors.length > 0) return item.authors[0].name;
+  return 'Unknown';
+}
+
 async function search(query, type = 'all') {
   const yt = await getInnertube();
   const results = await yt.music.search(query);
 
-  const tracks = (results.songs?.contents || []).map(s => ({
-    id: s.id,
-    title: s.title || 'Unknown',
-    artist: s.authors?.[0]?.name || 'Unknown',
-    thumbnail: s.thumbnails?.[0]?.url?.replace('w120-h120', 'hqdefault') || `https://i.ytimg.com/vi/${s.id}/hqdefault.jpg`,
-    duration: s.duration || 0,
-    url: `https://youtube.com/watch?v=${s.id}`,
-    type: 'track'
-  }));
+  const tracks = [];
+  const albums = [];
+  const artists = [];
 
-  const albums = (results.albums?.contents || []).slice(0, 4).map(a => ({
-    id: a.id,
-    title: a.title || 'Unknown',
-    artist: a.authors?.[0]?.name || 'Unknown',
-    thumbnail: a.thumbnails?.[0]?.url?.replace('w120-h120', 'hqdefault') || `https://i.ytimg.com/vi/${a.id}/hqdefault.jpg`,
-    trackCount: a.track_count || 0,
-    type: 'album'
-  }));
+  for (const section of results.contents) {
+    try {
+      if (!section.contents) continue;
+      for (const item of section.contents) {
+        if (item.type !== 'MusicResponsiveListItem' || !item.id) continue;
+        if (item.item_type === 'song') {
+          tracks.push({
+            id: item.id,
+            title: item.title || 'Unknown',
+            artist: getArtist(item),
+            thumbnail: thumbUrl(item),
+            duration: item.duration || 0,
+            url: `https://youtube.com/watch?v=${item.id}`,
+            type: 'track'
+          });
+        } else if (item.item_type === 'album') {
+          albums.push({
+            id: item.id,
+            title: item.title || 'Unknown',
+            artist: getArtist(item),
+            thumbnail: thumbUrl(item),
+            trackCount: item.song_count || item.track_count || 0,
+            type: 'album'
+          });
+        } else if (item.item_type === 'artist') {
+          artists.push({
+            id: item.id,
+            title: item.name || item.title || 'Unknown',
+            thumbnail: thumbUrl(item),
+            trackCount: 0,
+            type: 'artist'
+          });
+        }
+      }
+    } catch {}
+  }
 
-  const artists = (results.artists?.contents || []).slice(0, 4).map(a => ({
-    id: a.id,
-    title: a.name || a.title || 'Unknown',
-    thumbnail: a.thumbnails?.[0]?.url?.replace('w120-h120', 'hqdefault') || '',
-    trackCount: 0,
-    type: 'artist'
-  }));
-
-  return { tracks, albums, artists };
+  return { tracks, albums: albums.slice(0, 4), artists: artists.slice(0, 4) };
 }
 
 async function getVideoInfo(videoId) {
