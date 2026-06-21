@@ -27,9 +27,7 @@ async function getInnertube() {
 }
 
 function thumbUrl(item) {
-  const t = item.thumbnail;
-  if (Array.isArray(t) && t.length > 0) return t[0].url?.replace('w120-h120', 'hqdefault');
-  if (t && t.url) return t.url.replace('w120-h120', 'hqdefault');
+  if (!item.id) return '';
   return `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
 }
 
@@ -89,24 +87,35 @@ async function search(query, type = 'all') {
 
 async function getVideoInfo(videoId) {
   const yt = await getInnertube();
-  const info = await yt.getBasicInfo(videoId);
-  return {
-    id: videoId,
-    title: info.title || 'Unknown',
-    artist: info.author?.name || 'Unknown',
-    thumbnail: info.thumbnail?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-    duration: info.duration || 0,
-    description: info.description || '',
-    webpage_url: `https://youtube.com/watch?v=${videoId}`
-  };
+  try {
+    const info = await yt.getBasicInfo(videoId);
+    const b = info.basic_info || {};
+    return {
+      id: videoId,
+      title: b.title || info.title || 'Unknown',
+      artist: b.channel?.[0]?.name || info.author?.name || (info.primary_info?.title?.runs?.[0]?.text) || 'Unknown',
+      thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      duration: b.duration || 0,
+      description: b.description || info.description || '',
+      webpage_url: `https://youtube.com/watch?v=${videoId}`
+    };
+  } catch {
+    return {
+      id: videoId, title: 'Unknown', artist: 'Unknown',
+      thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      duration: 0, description: '', webpage_url: `https://youtube.com/watch?v=${videoId}`
+    };
+  }
 }
 
 async function getLyrics(videoId) {
   try {
     const yt = await getInnertube();
     const info = await yt.getBasicInfo(videoId);
-    const lyrics = await info.getLyrics();
-    if (lyrics) return lyrics.content.toString();
+    if (info?.getLyrics) {
+      const lyrics = await info.getLyrics();
+      if (lyrics) return lyrics.content?.toString() || lyrics.toString();
+    }
   } catch {}
   return null;
 }
