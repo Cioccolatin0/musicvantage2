@@ -35,6 +35,74 @@ CREATE TABLE IF NOT EXISTS playlists (
   tracks     JSONB NOT NULL DEFAULT '[]',
   created    BIGINT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS social_users (
+  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  color    TEXT NOT NULL DEFAULT '#7c3aed',
+  created  BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS friendships (
+  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  requester UUID NOT NULL REFERENCES social_users(id) ON DELETE CASCADE,
+  addressee UUID NOT NULL REFERENCES social_users(id) ON DELETE CASCADE,
+  status    TEXT NOT NULL DEFAULT 'pending',
+  created   BIGINT NOT NULL,
+  UNIQUE(requester, addressee)
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room     TEXT NOT NULL,
+  sender   UUID NOT NULL REFERENCES social_users(id) ON DELETE CASCADE,
+  text     TEXT NOT NULL,
+  created  BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS jam_sessions (
+  id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  host      UUID NOT NULL REFERENCES social_users(id) ON DELETE CASCADE,
+  name      TEXT NOT NULL,
+  active    BOOLEAN NOT NULL DEFAULT TRUE,
+  track_id  TEXT,
+  position  REAL NOT NULL DEFAULT 0,
+  playing   BOOLEAN NOT NULL DEFAULT FALSE,
+  created   BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS jam_participants (
+  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session  UUID NOT NULL REFERENCES jam_sessions(id) ON DELETE CASCADE,
+  user_id  UUID NOT NULL REFERENCES social_users(id) ON DELETE CASCADE,
+  UNIQUE(session, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS shared_playlists (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner      UUID NOT NULL REFERENCES social_users(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  tracks     JSONB NOT NULL DEFAULT '[]',
+  created    BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS playlist_shares (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  playlist   UUID NOT NULL REFERENCES shared_playlists(id) ON DELETE CASCADE,
+  user_id    UUID NOT NULL REFERENCES social_users(id) ON DELETE CASCADE,
+  can_edit   BOOLEAN NOT NULL DEFAULT FALSE,
+  UNIQUE(playlist, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES social_users(id) ON DELETE CASCADE,
+  type    TEXT NOT NULL,
+  payload JSONB DEFAULT '{}',
+  read    BOOLEAN NOT NULL DEFAULT FALSE,
+  created BIGINT NOT NULL
+);
 `;
 
 async function initDb() {

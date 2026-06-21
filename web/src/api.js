@@ -1,7 +1,7 @@
 const API = '/api';
-
 let apiKey = null;
 let configPromise = null;
+let socket = null;
 
 async function fetchConfig() {
   try {
@@ -10,7 +10,6 @@ async function fetchConfig() {
     apiKey = data.key;
   } catch { apiKey = ''; }
 }
-
 configPromise = fetchConfig();
 
 function addKey(url) {
@@ -19,44 +18,24 @@ function addKey(url) {
   return `${url}${sep}key=${encodeURIComponent(apiKey)}`;
 }
 
-async function authFetch(url, options = {}) {
+export async function authFetch(url, options = {}) {
   await configPromise;
   const headers = { ...options.headers };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
   return fetch(url, { ...options, headers });
 }
 
+// --- Music API ---
 export async function search(query, type = 'all') {
   const res = await authFetch(`${API}/search?q=${encodeURIComponent(query)}&type=${type}`);
   if (!res.ok) throw new Error('Search failed');
   return res.json();
 }
-
 export async function getInfo(id) {
   const res = await authFetch(`${API}/info/${id}`);
   if (!res.ok) throw new Error('Failed to get info');
   return res.json();
 }
-
-export async function getStreamUrl(id) {
-  const res = await authFetch(`${API}/stream/url/${id}`);
-  if (!res.ok) throw new Error('Stream not found');
-  const data = await res.json();
-  return data.url;
-}
-
-export function getStreamUrlDirect(id) {
-  return addKey(`${API}/stream/${id}`);
-}
-
-export async function prefetchStreamUrls(ids) {
-  await authFetch(`${API}/stream/prefetch`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids })
-  }).catch(() => {});
-}
-
 export async function getLyrics(id) {
   const res = await authFetch(`${API}/lyrics/${id}`);
   if (!res.ok) return null;
@@ -64,66 +43,147 @@ export async function getLyrics(id) {
   return data.lyrics;
 }
 
-// === Admin API ===
-let adminToken = null;
-
-export function setAdminToken(token) {
-  adminToken = token;
+// --- Social Auth ---
+export async function socialRegister(username, password) {
+  const res = await authFetch(`${API}/social/register`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  return res.json();
+}
+export async function socialLogin(username, password) {
+  const res = await authFetch(`${API}/social/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  return res.json();
+}
+export async function searchUsers(q) {
+  const res = await authFetch(`${API}/social/users?q=${encodeURIComponent(q)}`);
+  return res.json();
+}
+export async function getFriends(userId) {
+  const res = await authFetch(`${API}/social/friends?userId=${userId}`);
+  return res.json();
+}
+export async function sendFriendRequest(requester, addressee) {
+  const res = await authFetch(`${API}/social/friend-request`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requester, addressee })
+  });
+  return res.json();
+}
+export async function respondToFriend(userId, friendId, accept) {
+  const res = await authFetch(`${API}/social/friend-response`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, friendId, accept })
+  });
+  return res.json();
+}
+export async function getNotifications(userId) {
+  const res = await authFetch(`${API}/social/notifications?userId=${userId}`);
+  return res.json();
+}
+export async function markNotificationRead(id) {
+  await authFetch(`${API}/social/notifications/read`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id })
+  });
+}
+export async function getChatHistory(room) {
+  const res = await authFetch(`${API}/social/chat/${room}`);
+  return res.json();
+}
+export async function createJam(host, name) {
+  const res = await authFetch(`${API}/social/jam`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ host, name })
+  });
+  return res.json();
+}
+export async function getActiveJams() {
+  const res = await authFetch(`${API}/social/jams`);
+  return res.json();
+}
+export async function joinJam(sessionId, userId) {
+  await authFetch(`${API}/social/jam/join`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, userId })
+  });
+}
+export async function getJamParticipants(sessionId) {
+  const res = await authFetch(`${API}/social/jam/${sessionId}/participants`);
+  return res.json();
+}
+export async function createSharedPlaylist(owner, name) {
+  const res = await authFetch(`${API}/social/playlists`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ owner, name })
+  });
+  return res.json();
+}
+export async function getSharedPlaylists(userId) {
+  const res = await authFetch(`${API}/social/playlists?userId=${userId}`);
+  return res.json();
+}
+export async function sharePlaylist(playlistId, userId, canEdit) {
+  await authFetch(`${API}/social/playlists/share`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playlistId, userId, canEdit })
+  });
+}
+export async function addTrackToSharedPlaylist(playlistId, track) {
+  const res = await authFetch(`${API}/social/playlists/add-track`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ playlistId, track })
+  });
+  return res.json();
 }
 
-export function getAdminToken() {
-  return adminToken;
-}
-
-async function adminFetch(url, options = {}) {
-  const headers = { ...options.headers };
-  if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
-  return fetch(url, { ...options, headers });
-}
+// --- Admin ---
+let adminToken = '';
+export function setAdminToken(t) { adminToken = t; }
+export function getAdminToken() { return adminToken; }
 
 export async function adminLogin(password) {
   const res = await fetch(`${API}/admin/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password })
   });
-  if (!res.ok) throw new Error('Invalid password');
-  const data = await res.json();
-  adminToken = data.token;
-  return data.token;
+  const d = await res.json();
+  if (d.success) setAdminToken(d.token);
+  return d;
 }
-
+export async function adminChangePassword(oldPw, newPw) {
+  const res = await fetch(`${API}/admin/change-password`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: adminToken, oldPassword: oldPw, newPassword: newPw })
+  });
+  return res.json();
+}
 export async function adminListApps() {
-  const res = await adminFetch(`${API}/admin/apps`);
+  const res = await fetch(`${API}/admin/apps?token=${adminToken}`);
   return res.json();
 }
-
-export async function adminCreateApp(name) {
-  const res = await adminFetch(`${API}/admin/apps`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name })
+export async function adminCreateApp(data) {
+  const res = await fetch(`${API}/admin/apps`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: adminToken, ...data })
   });
-  if (!res.ok) throw new Error('Failed to create app');
   return res.json();
 }
-
-export async function adminRevokeApp(name) {
-  const res = await adminFetch(`${API}/admin/apps/${encodeURIComponent(name)}`, {
-    method: 'DELETE'
+export async function adminRevokeApp(id) {
+  const res = await fetch(`${API}/admin/apps/revoke`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: adminToken, appId: id })
   });
-  if (!res.ok) throw new Error('Failed to revoke app');
   return res.json();
 }
 
-export async function adminChangePassword(oldPwd, newPwd) {
-  const res = await adminFetch(`${API}/admin/change-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ oldPassword: oldPwd, newPassword: newPwd })
-  });
-  if (!res.ok) throw new Error('Wrong password');
-  return res.json();
+// --- Socket.IO ---
+export function getSocket() {
+  if (!socket && window.io) {
+    socket = io('/', { transports: ['websocket', 'polling'] });
+  }
+  return socket;
 }
-
-export { authFetch };
