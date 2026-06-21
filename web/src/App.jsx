@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { search, prefetchStreamUrls, getLyrics } from './api';
+import { search, getLyrics } from './api';
 import { formatDuration } from './utils';
 import Sidebar from './Sidebar';
 import PlayerBar from './PlayerBar';
@@ -43,7 +43,6 @@ function App() {
   const audioRef = useRef(null);
   const ytPlayerRef = useRef(null);
   const progressRef = useRef(null);
-  const streamCache = useRef({});
   const startedRef = useRef(false);
   const repeatRef = useRef('off');
   const playNextRef = useRef(() => {});
@@ -89,13 +88,6 @@ function App() {
     return null;
   }, [queue, currentTrack, shuffle, repeat, getShuffledIndex]);
 
-  const preloadNextStream = useCallback(() => {
-    const next = getNextTrack();
-    if (next && !streamCache.current[next.id]) {
-      getStreamUrl(next.id).then(url => { if (url) streamCache.current[next.id] = url; }).catch(() => {});
-    }
-  }, [getNextTrack]);
-
   const playTrack = useCallback((track, trackList) => {
     if (trackList) setQueue(trackList);
     if (ytPlayerRef.current && currentTrack?.id === track.id) {
@@ -123,10 +115,6 @@ function App() {
       setLoadingStream(false);
     }
   }, [currentTrack]);
-
-  useEffect(() => {
-    if (playing) preloadNextStream();
-  }, [playing, currentTrack?.id, preloadNextStream]);
 
   useEffect(() => {
     if (window.YT && window.YT.Player) {
