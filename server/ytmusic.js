@@ -1,10 +1,10 @@
-const { Innertube } = require('youtubei.js');
 const fs = require('fs');
 
 let innertube = null;
 let initPromise = null;
 
 async function init() {
+  const { Innertube } = await import('youtubei.js');
   const opts = { lang: 'it' };
   const cookieFile = process.env.YT_COOKIES_FILE;
   if (cookieFile && fs.existsSync(cookieFile)) {
