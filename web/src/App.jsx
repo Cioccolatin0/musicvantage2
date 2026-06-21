@@ -45,10 +45,8 @@ function App() {
   const progressRef = useRef(null);
   const streamCache = useRef({});
   const startedRef = useRef(false);
-  const repeatRef = useRef(repeat);
-  const playNextRef = useRef(playNext);
-  repeatRef.current = repeat;
-  playNextRef.current = playNext;
+  const repeatRef = useRef('off');
+  const playNextRef = useRef(() => {});
 
   const doSearch = useCallback(async (q, f) => {
     if (!q.trim()) return;
@@ -251,6 +249,9 @@ function App() {
       p.seekTo(pct * d, true);
     } catch {}
   };
+
+  useEffect(() => { repeatRef.current = repeat; }, [repeat]);
+  useEffect(() => { playNextRef.current = playNext; }, [playNext]);
 
   useEffect(() => {
     try { if (ytPlayerRef.current?.setVolume) ytPlayerRef.current.setVolume(volume * 100); } catch {}
