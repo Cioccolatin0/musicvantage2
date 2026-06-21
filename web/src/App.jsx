@@ -153,8 +153,8 @@ function App() {
       try {
         ytPlayerRef.current = new YT.Player('yt-player', {
           videoId: currentTrack.id,
-          height: playMode === 'video' ? '240' : '0',
-          width: playMode === 'video' ? '100%' : '0',
+          height: '240',
+          width: '100%',
           playerVars: {
             autoplay: 1, modestbranding: 1, rel: 0,
             controls: 0, playsinline: 1, fs: 0,
@@ -193,7 +193,7 @@ function App() {
         setStreamError(true);
       }
     }, 100);
-  }, [currentTrack?.id, youtubeReady, playMode]);
+  }, [currentTrack?.id, youtubeReady]);
 
   useEffect(() => {
     if (!playing) return;
@@ -586,9 +586,10 @@ function App() {
       <div id="yt-player" style={{
         position: 'fixed', bottom: playMode === 'video' ? '90px' : '-9999px',
         right: '10px', zIndex: 100,
-        width: playMode === 'video' ? '360px' : '1px',
-        height: playMode === 'video' ? '203px' : '1px',
-        opacity: playMode === 'video' ? 1 : 0.01,
+        width: playMode === 'video' ? '360px' : '320px',
+        height: playMode === 'video' ? '203px' : '180px',
+        opacity: playMode === 'video' ? 1 : 0,
+        pointerEvents: playMode === 'video' ? 'auto' : 'none',
         transition: 'all 0.3s ease'
       }} />
       <audio ref={audioRef} onTimeUpdate={handleTimeUpdate} onEnded={handleEnded} onLoadedMetadata={handleTimeUpdate} onError={handleAudioError}
