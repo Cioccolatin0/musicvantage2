@@ -210,15 +210,32 @@ body {
   flex: 1; height: 4px; background: var(--border); border-radius: 2px; cursor: pointer;
   position: relative;
 }
+.progress-bar::after { content: ''; position: absolute; inset: -8px 0; border-radius: 2px; }
 .progress-fill { height: 100%; background: var(--gradient); border-radius: 2px; position: relative; }
 .progress-thumb {
-  position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%;
-  background: #fff; transform: translate(-50%, -50%); display: none;
+  position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
-.progress-bar:hover .progress-thumb { display: block; }
 .volume-wrap { display: flex; align-items: center; gap: 6px; }
-.volume-bar { width: 60px; height: 4px; background: var(--border); border-radius: 2px; cursor: pointer; }
+.volume-bar { width: 60px; height: 4px; background: var(--border); border-radius: 2px; cursor: pointer; position: relative; }
+.volume-bar::after { content: ''; position: absolute; inset: -8px 0; }
 .volume-fill { height: 100%; background: var(--text); border-radius: 2px; }
+
+/* === Player Lyrics === */
+.player-lyrics {
+  position: absolute; bottom: 100%; left: 0; right: 0;
+  max-height: 200px; overflow-y: auto;
+  background: rgba(10,10,15,0.95); backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  animation: slideUp 0.2s ease;
+}
+.player-lyrics-scroll { padding: 16px 24px; }
+.player-lyrics-line {
+  padding: 4px 0; font-size: 13px; line-height: 1.6;
+  color: var(--text-secondary); transition: color 0.2s;
+}
+.player-lyrics-line.active { color: var(--text); font-weight: 600; }
 
 /* === Panels / Modals === */
 .modal-overlay {

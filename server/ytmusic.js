@@ -69,45 +69,70 @@ async function search(query, type = 'all') {
   const tracks = [];
   const albums = [];
   const artists = [];
+  const seenTracks = new Set();
 
   for (const section of results.contents) {
     try {
       if (!section.contents) continue;
       for (const item of section.contents) {
-        if (item.type !== 'MusicResponsiveListItem' || !item.id) continue;
-        if (item.item_type === 'song') {
-          tracks.push({
-            id: item.id,
-            title: item.title || 'Unknown',
-            artist: getArtist(item),
-            thumbnail: thumbUrl(item),
-            duration: parseDuration(item.duration),
-            url: `https://youtube.com/watch?v=${item.id}`,
-            type: 'track'
-          });
-        } else if (item.item_type === 'album') {
+        if (!item || !item.id) continue;
+        if (item.type !== 'MusicResponsiveListItem') continue;
+
+        const itemType = item.item_type || item.type || '';
+        const isSong = itemType === 'song' || itemType === 'video' || itemType === 'MusicResponsiveListItem';
+        const isAlbum = itemType === 'album';
+        const isArtist = itemType === 'artist';
+
+        if (!isSong && !isAlbum && !isArtist) continue;
+
+        const dur = parseDuration(item.duration);
+        const thumb = thumbUrl(item);
+        const artist = getArtist(item);
+
+        if (isSong || isArtist) {
+          const title = (item.title || item.name || 'Unknown').toString();
+          if (isSong) {
+            if (seenTracks.has(item.id)) continue;
+            if (dur > 0 && dur <= 420) {
+              seenTracks.add(item.id);
+              tracks.push({
+                id: item.id,
+                title,
+                artist,
+                thumbnail: thumb,
+                duration: dur,
+                url: `https://youtube.com/watch?v=${item.id}`,
+                type: 'track'
+              });
+            }
+          } else {
+            artists.push({
+              id: item.id,
+              title: item.name || item.title || 'Unknown',
+              thumbnail: thumb,
+              trackCount: 0,
+              type: 'artist'
+            });
+          }
+        } else if (isAlbum) {
           albums.push({
             id: item.id,
             title: item.title || 'Unknown',
-            artist: getArtist(item),
-            thumbnail: thumbUrl(item),
+            artist,
+            thumbnail: thumb,
             trackCount: item.song_count || item.track_count || 0,
             type: 'album'
-          });
-        } else if (item.item_type === 'artist') {
-          artists.push({
-            id: item.id,
-            title: item.name || item.title || 'Unknown',
-            thumbnail: thumbUrl(item),
-            trackCount: 0,
-            type: 'artist'
           });
         }
       }
     } catch {}
   }
 
-  return { tracks: tracks.filter(t => !t.duration || t.duration <= 420), albums: albums.slice(0, 4), artists: artists.slice(0, 4) };
+  return {
+    tracks: tracks.slice(0, 20),
+    albums: albums.slice(0, 4),
+    artists: artists.slice(0, 4)
+  };
 }
 
 async function getVideoInfo(videoId) {

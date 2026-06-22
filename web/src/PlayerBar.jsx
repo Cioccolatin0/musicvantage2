@@ -1,14 +1,12 @@
 import React, { useRef } from 'react';
-import { IconPrev, IconPlay, IconPause, IconNext, IconShuffle, IconRepeat, IconRepeatOne, IconLyrics, IconQueue, IconAdd, IconHeart, IconHeartFilled, IconVolume, IconList, IconMusicVideo, IconMusicNote } from './Icons';
+import { IconPrev, IconPlay, IconPause, IconNext, IconShuffle, IconRepeat, IconRepeatOne, IconLyrics, IconQueue, IconAdd, IconHeart, IconHeartFilled, IconVolume, IconList, IconMusicVideo, IconMusicNote, IconRefresh, IconClose } from './Icons';
 import { formatDuration } from './utils';
-
-import { IconRefresh } from './Icons';
 
 export default function PlayerBar({
   currentTrack, playing, loadingStream, streamError, currentTime, duration, shuffle, repeat,
   togglePlay, playPrev, playNext, retryStream, handleProgressClick, volume, setVolume,
   onToggleShuffle, onToggleRepeat, onOpenLyrics, onOpenQueue, onOpenPlaylists, liked, onToggleLike,
-  playMode, onToggleMode
+  playMode, onToggleMode, lyrics, showLyrics, setShowLyrics
 }) {
   const progressRef = useRef(null);
   const volumeRef = useRef(null);
@@ -69,7 +67,7 @@ export default function PlayerBar({
         </div>
 
         <div className="player-section right">
-          <button className="icon-btn" onClick={onOpenLyrics} title="Lyrics">
+          <button className={`icon-btn ${showLyrics ? 'active' : ''}`} onClick={() => setShowLyrics(s => !s)} title="Lyrics">
             <IconLyrics size={18} />
           </button>
           <button className="icon-btn" onClick={onOpenQueue} title="Queue">
@@ -89,6 +87,15 @@ export default function PlayerBar({
           </button>
         </div>
       </div>
+      {showLyrics && (
+        <div className="player-lyrics">
+          <div className="player-lyrics-scroll">
+            {lyrics ? lyrics.split('\n').map((line, i) => (
+              <p key={i} className="player-lyrics-line">{line}</p>
+            )) : <p className="text-secondary">Loading lyrics...</p>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

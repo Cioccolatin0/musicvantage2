@@ -4,7 +4,6 @@ import { formatDuration } from './utils';
 import Sidebar from './Sidebar';
 import PlayerBar from './PlayerBar';
 import QueuePanel from './QueuePanel';
-import LyricsPanel from './LyricsPanel';
 import PlaylistsPanel from './PlaylistsPanel';
 import AdminLogin from './AdminLogin';
 import AdminDashboard from './AdminDashboard';
@@ -14,7 +13,7 @@ import Friends from './components/Friends';
 import Notifications from './components/Notifications';
 import JamSession from './components/JamSession';
 import MobileNav from './components/MobileNav';
-import { IconSearch, IconAdmin, IconImport, IconHome, IconChat, IconFriends, IconJam, IconPlaylist, IconQueue, IconLyrics, IconBell, IconUser, IconMusicNote } from './Icons';
+import { IconSearch, IconAdmin, IconImport, IconHome, IconChat, IconFriends, IconJam, IconPlaylist, IconQueue, IconBell, IconUser, IconMusicNote } from './Icons';
 
 function App() {
   const [query, setQuery] = useState('');
@@ -204,7 +203,8 @@ function App() {
   }, [playing, currentTrack?.id]);
 
   useEffect(() => {
-    if (!currentTrack || !playing) return;
+    if (!currentTrack) return;
+    setLyrics(null);
     getLyrics(currentTrack.id).then(l => setLyrics(l)).catch(() => {});
   }, [currentTrack?.id]);
 
@@ -330,9 +330,6 @@ function App() {
           <div className={`sidebar-link ${activeView === 'queue' ? 'active' : ''}`} onClick={() => handleNavigate('queue')}>
             <span className="icon"><IconQueue /></span><span>Queue</span>
           </div>
-          <div className={`sidebar-link ${activeView === 'lyrics' ? 'active' : ''}`} onClick={() => handleNavigate('lyrics')}>
-            <span className="icon"><IconLyrics /></span><span>Lyrics</span>
-          </div>
           <div className={`sidebar-link ${activeView === 'import' ? 'active' : ''}`} onClick={() => handleNavigate('import')}>
             <span className="icon"><IconImport /></span><span>Import</span>
           </div>
@@ -449,24 +446,7 @@ function App() {
                 </div>
               )}
             </div>
-          )}
-
-          {activeView === 'lyrics' && (
-            <div className="tab-view">
-              <div className="section-header"><h2>Lyrics</h2></div>
-              {currentTrack ? (
-                <div className="lyrics-content">
-                  <div className="lyrics-track-info">
-                    <img src={currentTrack.thumbnail} alt={currentTrack.title} />
-                    <div><h3>{currentTrack.title}</h3><p>{currentTrack.artist}</p></div>
-                  </div>
-                  <div className="lyrics-text">
-                    <p className="lyrics-placeholder">No lyrics available for this track.<br />Lyrics will appear here when available.</p>
-                  </div>
-                </div>
-              ) : <p className="panel-empty">Select a track to view lyrics</p>}
-            </div>
-          )}
+          )          }
 
           {artistInfo && !artistLoading && (
             <div className="panel-content artist-page">
@@ -662,11 +642,13 @@ function App() {
           onOpenPlaylists={() => setShowPlaylists(true)}
           onToggleLike={() => setLiked(l => !l)}
           onToggleMode={() => setPlayMode(m => m === 'music' ? 'video' : 'music')}
+          lyrics={lyrics}
+          showLyrics={showLyrics}
+          setShowLyrics={setShowLyrics}
         />
       )}
 
       {showQueue && <QueuePanel queue={queue} currentTrack={currentTrack} onPlayTrack={playTrack} onRemove={removeFromQueue} onClose={() => setShowQueue(false)} />}
-      {showLyrics && <LyricsPanel track={currentTrack} lyrics={lyrics} onClose={() => setShowLyrics(false)} />}
       {showPlaylists && <PlaylistsPanel playlists={playlists} currentTrack={currentTrack} onAddToPlaylist={addToPlaylist} onCreatePlaylist={createPlaylist} onPlayTrack={playTrack} onClose={() => setShowPlaylists(false)} />}
 
       {showAuth && (
