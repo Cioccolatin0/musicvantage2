@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket } from './api';
+import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket, getStreamUrl } from './api';
 import { formatDuration } from './utils';
 import { getCachedSearch, setCachedSearch, getRecentTracks, addRecentTrack, getDownloads, addDownload, removeDownload, isDownloaded } from './cache';
 import Sidebar from './Sidebar';
@@ -62,6 +62,8 @@ function App() {
   const playNextRef = useRef(() => {});
   const userRef = useRef(null);
   const searchTimerRef = useRef(null);
+  const bgAudioRef = useRef(null);
+  const bgModeRef = useRef(false);
 
   useEffect(() => { userRef.current = user; }, [user]);
 
@@ -265,6 +267,64 @@ function App() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
+
+  // Background playback: switch from YouTube IFrame to <audio> when page is hidden
+  useEffect(() => {
+    const currentRef = currentTrack;
+    if (!currentRef) return;
+
+    const bgAudio = new Audio();
+    bgAudio.preload = 'auto';
+    bgAudioRef.current = bgAudio;
+
+    const onVisibility = async () => {
+      if (document.hidden && playing) {
+        const p = ytPlayerRef.current;
+        const pos = p?.getCurrentTime?.() || 0;
+        try { p?.pauseVideo?.(); } catch {}
+        try {
+          const url = await getStreamUrl(currentRef.id);
+          if (url && document.hidden) {
+            bgAudio.src = url;
+            bgAudio.currentTime = pos;
+            bgAudio.volume = volume;
+            bgAudio.play().catch(() => {});
+            bgModeRef.current = true;
+          }
+        } catch {}
+      } else if (!document.hidden && bgModeRef.current) {
+        const pos = bgAudio.currentTime || 0;
+        bgAudio.pause();
+        bgAudio.src = '';
+        bgModeRef.current = false;
+        const p = ytPlayerRef.current;
+        if (p) {
+          try { p.seekTo(pos, true); p.playVideo(); } catch {}
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      bgAudio.pause();
+      bgAudio.src = '';
+    };
+  }, [currentTrack?.id, playing, volume]);
+
+  // MediaSession: lock screen / notification center controls
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !currentTrack) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentTrack.title,
+      artist: currentTrack.artist,
+      artwork: currentTrack.thumbnail ? [{ src: currentTrack.thumbnail, sizes: '480x480', type: 'image/jpeg' }] : []
+    });
+    navigator.mediaSession.setActionHandler('play', () => { togglePlayRef.current(); });
+    navigator.mediaSession.setActionHandler('pause', () => { togglePlayRef.current(); });
+    navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
+    navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
+  }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.thumbnail]);
 
   const toggleShuffle = () => setShuffle(s => !s);
   const toggleRepeat = () => setRepeat(r => r === 'off' ? 'all' : r === 'all' ? 'one' : 'off');

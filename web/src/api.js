@@ -31,6 +31,12 @@ export async function search(query, type = 'all') {
   if (!res.ok) throw new Error('Search failed');
   return res.json();
 }
+export async function getStreamUrl(id) {
+  const res = await authFetch(`${API}/stream/url/${id}`);
+  if (!res.ok) return null;
+  const d = await res.json();
+  return d.url || null;
+}
 export async function getInfo(id) {
   const res = await authFetch(`${API}/info/${id}`);
   if (!res.ok) throw new Error('Failed to get info');
