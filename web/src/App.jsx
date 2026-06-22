@@ -186,6 +186,16 @@ function App() {
   }, [youtubeReady]);
 
   useEffect(() => {
+    const el = document.getElementById('yt-player');
+    if (!el) return;
+    if (playMode === 'video') {
+      el.style.cssText = 'position:fixed;left:auto;bottom:90px;right:10px;z-index:100;width:360px;height:203px;opacity:1;pointer-events:auto;transition:all 0.3s ease';
+    } else {
+      el.style.cssText = 'position:fixed;left:1px;bottom:1px;right:auto;z-index:1;width:1px;height:1px;opacity:0.01;pointer-events:none;transition:all 0.3s ease';
+    }
+  }, [playMode]);
+
+  useEffect(() => {
     if (!playing) return;
     const interval = setInterval(() => {
       try { const p = ytPlayerRef.current; if (p && p.getCurrentTime) { setCurrentTime(p.getCurrentTime() || 0); setDuration(p.getDuration() || 0); } } catch {}
@@ -672,17 +682,6 @@ function App() {
       {showChat && user && <Chat room="general" userId={user.id} username={user.username} userColor={user.color} onClose={() => setShowChat(false)} />}
       {showNotifs && user && <Notifications userId={user.id} onClose={() => setShowNotifs(false)} />}
 
-      <div id="yt-player" style={{
-        position: 'fixed', left: playMode === 'video' ? 'auto' : '1px',
-        bottom: playMode === 'video' ? '90px' : '1px',
-        right: playMode === 'video' ? '10px' : 'auto',
-        zIndex: playMode === 'video' ? 100 : 1,
-        width: playMode === 'video' ? '360px' : '1px',
-        height: playMode === 'video' ? '203px' : '1px',
-        opacity: playMode === 'video' ? 1 : 0.01,
-        pointerEvents: playMode === 'video' ? 'auto' : 'none',
-        transition: 'all 0.3s ease'
-      }} />
     </div>
   );
 }
