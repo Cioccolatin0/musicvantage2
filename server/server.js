@@ -212,25 +212,38 @@ app.get('/api/debug/search', async (req, res) => {
     const { getInnertube } = require('./ytmusic');
     const yt = await getInnertube();
     const results = await yt.music.search(q);
-    const items = [];
-    for (const section of results.contents) {
-      if (!section.contents) continue;
-      for (const item of section.contents) {
-        items.push({
-          id: item.id,
-          type: item.type,
-          item_type: item.item_type,
-          title: item.title || item.name,
-          duration: item.duration,
-          duration_type: typeof item.duration,
-          thumbnails: item.thumbnails,
-          artists: item.artists,
-          authors: item.authors,
-          keys: Object.keys(item).slice(0, 30)
-        });
+    const sections = [];
+    for (const section of results.contents || []) {
+      const sectionInfo = {
+        title: (section.title || '').toString(),
+        type: section.type,
+        itemCount: section.contents ? section.contents.length : 0,
+        items: []
+      };
+      if (section.contents) {
+        for (const item of section.contents) {
+          sectionInfo.items.push({
+            id: item.id,
+            type: item.type,
+            item_type: item.item_type,
+            title: (item.title || item.name || '').toString(),
+            duration: item.duration,
+            duration_type: typeof item.duration,
+            has_thumbnails: !!(item.thumbnails && item.thumbnails.length > 0),
+            has_artists: !!(item.artists && item.artists.length > 0),
+            keys: Object.keys(item).slice(0, 20)
+          });
+        }
       }
+      sections.push(sectionInfo);
     }
-    res.json(items.slice(0, 3));
+    res.json({
+      songsAccessor: results.songs ? { title: results.songs.title?.toString(), count: results.songs.contents?.length } : null,
+      videosAccessor: results.videos ? { title: results.videos.title?.toString(), count: results.videos.contents?.length } : null,
+      albumsAccessor: results.albums ? { title: results.albums.title?.toString(), count: results.albums.contents?.length } : null,
+      artistsAccessor: results.artists ? { title: results.artists.title?.toString(), count: results.artists.contents?.length } : null,
+      sections
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
