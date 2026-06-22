@@ -357,7 +357,7 @@ function App() {
               {!sidebarCollapsed && <span style={{ fontSize: 13 }}>{user.username}</span>}
             </div>
           ) : (
-            !sidebarCollapsed && <button className="btn-primary" style={{ width: '100%', padding: '8px 12px', fontSize: 13 }} onClick={() => setShowAuth(true)}>Sign In</button>
+            !sidebarCollapsed && <button className="btn-primary" style={{ width: '100%', padding: '8px 12px', fontSize: 13 }} onClick={() => { setShowAuth(true); if (window.innerWidth <= 768) setSidebarCollapsed(true); }}>Sign In</button>
           )}
         </div>
       </div>
@@ -384,7 +384,7 @@ function App() {
                 <button className="icon-btn" onClick={() => { setShowChat(true); setShowNotifs(false); }} title="Chat"><IconChat size={18} /></button>
               </>
             )}
-            {!user && <button className="btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setShowAuth(true)}>Sign In</button>}
+            {!user && <button className="btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => { setShowAuth(true); if (window.innerWidth <= 768) setSidebarCollapsed(true); }}>Sign In</button>}
           </div>
         </header>
 
@@ -717,7 +717,7 @@ function AuthModal({ onLogin, onRegister, onClose, onLogout, user }) {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [referralCode, setReferralCode] = useState('');
+  const [referralCode, setReferralCode] = useState(() => new URLSearchParams(window.location.search).get('ref') || '');
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
@@ -761,9 +761,9 @@ function AuthModal({ onLogin, onRegister, onClose, onLogout, user }) {
               </>
             ) : (
               <>
+                <input value={referralCode} onChange={e => setReferralCode(e.target.value)} placeholder="Referral code *" autoFocus />
                 <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email" />
                 <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" />
-                <input value={referralCode} onChange={e => setReferralCode(e.target.value)} placeholder="Referral code" />
               </>
             )}
             <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Password" />

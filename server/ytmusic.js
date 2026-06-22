@@ -63,6 +63,7 @@ function getArtist(item) {
 }
 
 const VARIATION_KEYWORDS = ['remix', 'sped up', 'slowed', 'reverb', 'acoustic', 'live', 'cover', 'version', 'extended', 'edit', 'instrumental', 'karaoke', 'nightcore', 'trap', 'lo-fi', 'lofi', 'piano', 'orchestral', 'unplugged', 'mashup', 'flip', 'bootleg', 'vip'];
+const MIX_KEYWORDS = ['mix', 'megamix', 'continuous mix', 'dj mix', 'full album', 'live set', 'compilation', 'medley', 'non-stop', 'nonstop', 'mega mix'];
 
 function stripVariation(title) {
   let clean = title.toLowerCase();
@@ -101,8 +102,8 @@ async function search(query, type = 'all') {
         if (!item || !item.id) continue;
         if (item.type !== 'MusicResponsiveListItem') continue;
 
-        const itemType = item.item_type || item.type || '';
-        const isSong = itemType === 'song' || itemType === 'video' || itemType === 'MusicResponsiveListItem';
+        const itemType = item.item_type || '';
+        const isSong = itemType === 'song' || itemType === 'video';
         const isAlbum = itemType === 'album';
         const isArtist = itemType === 'artist';
 
@@ -114,7 +115,9 @@ async function search(query, type = 'all') {
 
         if (isSong) {
           if (seenTracks.has(item.id)) continue;
-          if (dur > 0 && dur <= 420) {
+          const titleLower = (item.title || '').toString().toLowerCase();
+          const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
+          if (dur > 0 && dur <= 420 && !isMix) {
             seenTracks.add(item.id);
             allTracks.push({
               id: item.id,
@@ -209,8 +212,10 @@ async function getRelatedTracks(artistName) {
         if (!item || !item.id || item.type !== 'MusicResponsiveListItem') continue;
         const itemType = item.item_type || '';
         if (itemType !== 'song' && itemType !== 'video') continue;
+        const titleLower = (item.title || '').toString().toLowerCase();
+        const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
         const dur = parseDuration(item.duration);
-        if (!dur || dur > 420 || seen.has(item.id)) continue;
+        if (!dur || dur > 420 || seen.has(item.id) || isMix) continue;
         const artist = getArtist(item);
         if (artist.toLowerCase() !== artistName.toLowerCase()) continue;
         seen.add(item.id);

