@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS playlists (
 CREATE TABLE IF NOT EXISTS social_users (
   id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   username TEXT UNIQUE NOT NULL,
+  email    TEXT UNIQUE,
   password TEXT NOT NULL,
   color    TEXT NOT NULL DEFAULT '#7c3aed',
   created  BIGINT NOT NULL
@@ -113,6 +114,7 @@ CREATE TABLE IF NOT EXISTS referral_codes (
 );
 
 ALTER TABLE social_users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE social_users ADD COLUMN IF NOT EXISTS email TEXT UNIQUE;
 `;
 
 async function initDb() {

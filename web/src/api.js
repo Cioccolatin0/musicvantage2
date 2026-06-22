@@ -50,17 +50,17 @@ export async function getArtistInfo(artistId) {
 }
 
 // --- Social Auth ---
-export async function socialRegister(username, password, referralCode) {
+export async function socialRegister(username, email, password, referralCode) {
   const res = await authFetch(`${API}/social/register`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password, referralCode })
+    body: JSON.stringify({ username, email, password, referralCode })
   });
   return res.json();
 }
-export async function socialLogin(username, password) {
+export async function socialLogin(identifier, password) {
   const res = await authFetch(`${API}/social/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ email: identifier, password })
   });
   return res.json();
 }

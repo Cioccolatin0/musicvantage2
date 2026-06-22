@@ -3,10 +3,15 @@ const db = require('./db');
 
 function hashPassword(pw) { return crypto.createHash('sha256').update(pw).digest('hex'); }
 
-async function register(username, password, referralCode) {
-  const existing = await db.query('SELECT id FROM social_users WHERE username = $1', [username]);
-  if (existing.rows.length > 0) return null;
-  if (referralCode) {
+async function register(username, email, password, referralCode, bypassReferral = false) {
+  const existingUser = await db.query('SELECT id FROM social_users WHERE username = $1', [username]);
+  if (existingUser.rows.length > 0) return { error: 'Username already taken' };
+  if (email) {
+    const existingEmail = await db.query('SELECT id FROM social_users WHERE email = $1', [email]);
+    if (existingEmail.rows.length > 0) return { error: 'Email already registered' };
+  }
+  if (bypassReferral) {
+  } else if (referralCode) {
     const codeRow = await db.query('SELECT id, creator_id FROM referral_codes WHERE code = $1 AND used_by IS NULL', [referralCode]);
     if (codeRow.rows.length === 0) return { error: 'Invalid or used referral code' };
   } else {
@@ -15,8 +20,8 @@ async function register(username, password, referralCode) {
   }
   const color = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
   const { rows } = await db.query(
-    'INSERT INTO social_users (username, password, color, created) VALUES ($1, $2, $3, $4) RETURNING id, username, color',
-    [username, hashPassword(password), color, Date.now()]
+    'INSERT INTO social_users (username, email, password, color, created) VALUES ($1, $2, $3, $4, $5) RETURNING id, username, email, color',
+    [username, email || null, hashPassword(password), color, Date.now()]
   );
   if (referralCode && rows[0]) {
     await db.query('UPDATE referral_codes SET used_by = $1 WHERE code = $2', [rows[0].id, referralCode]);
@@ -43,8 +48,11 @@ async function getMyReferralCodes(userId) {
   return rows;
 }
 
-async function login(username, password) {
-  const { rows } = await db.query('SELECT id, username, color FROM social_users WHERE username = $1 AND password = $2', [username, hashPassword(password)]);
+async function login(identifier, password) {
+  const { rows } = await db.query(
+    'SELECT id, username, email, color, is_admin FROM social_users WHERE (username = $1 OR email = $1) AND password = $2',
+    [identifier, hashPassword(password)]
+  );
   return rows[0] || null;
 }
 

@@ -426,8 +426,10 @@ body {
 
 /* === Footer === */
 .app-footer {
-  text-align: center; padding: 12px 16px 80px; font-size: 12px;
-  color: var(--text-secondary); border-top: 1px solid var(--border);
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 80;
+  text-align: center; padding: 10px 16px; font-size: 12px;
+  color: var(--text-secondary); background: rgba(10,10,15,0.9); backdrop-filter: blur(10px);
+  border-top: 1px solid var(--border);
 }
 .app-footer a { color: var(--primary); text-decoration: none; }
 

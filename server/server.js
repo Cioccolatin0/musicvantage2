@@ -28,10 +28,10 @@ app.use('/api', auth.apiKeyMiddleware);
 // --- Social Auth ---
 app.post('/api/social/register', async (req, res) => {
   try {
-    const { username, password, referralCode } = req.body;
+    const { username, email, password, referralCode } = req.body;
     if (!username || !password || username.length < 2 || password.length < 3)
       return res.status(400).json({ error: 'Invalid username or password' });
-    const user = await social.register(username, password, referralCode);
+    const user = await social.register(username, email, password, referralCode);
     if (!user) return res.status(409).json({ error: 'Username taken' });
     if (user.error) return res.status(400).json({ error: user.error });
     res.json(user);
@@ -40,8 +40,9 @@ app.post('/api/social/register', async (req, res) => {
 
 app.post('/api/social/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    const user = await social.login(username, password);
+    const { username, email, password } = req.body;
+    const identifier = email || username;
+    const user = await social.login(identifier, password);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
     res.json(user);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -329,9 +330,9 @@ app.post('/api/admin/social/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (email === 'edoardobevilacqua78@gmail.com' && password === 'Eddyno99') {
-      let user = await social.login('admin', 'Eddyno99');
+      let user = await social.login('edoardobevilacqua78@gmail.com', 'Eddyno99');
       if (!user) {
-        const u = await social.register('admin', 'Eddyno99');
+        const u = await social.register('admin', 'edoardobevilacqua78@gmail.com', 'Eddyno99', null, true);
         if (u && !u.error && u.id) await social.setAdmin(u.id, true);
         user = u && !u.error ? { ...u, isAdmin: true } : { username: 'admin', isAdmin: true };
       } else {
@@ -439,9 +440,9 @@ const db = require('./db');
 db.initDb().then(async () => {
   await auth.ensureInitialSetup();
   try {
-    let admin = await social.login('admin', 'Eddyno99');
+    let admin = await social.login('edoardobevilacqua78@gmail.com', 'Eddyno99');
     if (!admin) {
-      admin = await social.register('admin', 'Eddyno99');
+      admin = await social.register('admin', 'edoardobevilacqua78@gmail.com', 'Eddyno99', null, true);
       if (admin && !admin.error && admin.id) await social.setAdmin(admin.id, true);
     } else if (!admin.is_admin) {
       await social.setAdmin(admin.id, true);

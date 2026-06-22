@@ -250,7 +250,7 @@ function App() {
   const toggleShuffle = () => setShuffle(s => !s);
   const toggleRepeat = () => setRepeat(r => r === 'off' ? 'all' : r === 'all' ? 'one' : 'off');
   const removeFromQueue = (idx) => setQueue(q => q.filter((_, i) => i !== idx));
-  const handleNavigate = (view) => { setActiveView(view); setSidebarCollapsed(true); };
+  const handleNavigate = (view) => { setActiveView(view); };
   const handleArtistClick = async (artist) => {
     setArtistLoading(true); setArtistInfo(null); setActiveView('home');
     try {
@@ -267,13 +267,13 @@ function App() {
   };
 
   // Social auth
-  const handleRegister = async (username, password, referralCode) => {
-    const u = await socialRegister(username, password, referralCode || undefined);
+  const handleRegister = async (username, email, password, referralCode) => {
+    const u = await socialRegister(username, email, password, referralCode || undefined);
     if (u && u.id) { setUser(u); setShowAuth(false); return true; }
     return u?.error || 'Registration failed';
   };
-  const handleLogin = async (username, password) => {
-    const u = await socialLogin(username, password);
+  const handleLogin = async (identifier, password) => {
+    const u = await socialLogin(identifier, password);
     if (u && u.id) { setUser(u); setShowAuth(false); return true; }
     return u?.error || 'Invalid credentials';
   };
@@ -304,6 +304,7 @@ function App() {
   const artists = results?.artists || [];
 
   return (
+    <>
     <div className="app">
       {/* Mobile menu overlay */}
       {!sidebarCollapsed && window.innerWidth <= 768 && (
@@ -664,12 +665,18 @@ function App() {
       {showChat && user && <Chat room="general" userId={user.id} username={user.username} userColor={user.color} onClose={() => setShowChat(false)} />}
       {showNotifs && user && <Notifications userId={user.id} onClose={() => setShowNotifs(false)} />}
 
-    </div>
+      </div>
+
+      <footer className="app-footer">
+        <p>MusicVantage 2026 &mdash; <a href="mailto:edoardobevilacqua78@gmail.com">edoardobevilacqua78@gmail.com</a></p>
+      </footer>
+    </>
   );
 }
 
 function AuthModal({ onLogin, onRegister, onClose, onLogout, user }) {
   const [mode, setMode] = useState('login');
+  const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [referralCode, setReferralCode] = useState('');
@@ -677,12 +684,19 @@ function AuthModal({ onLogin, onRegister, onClose, onLogout, user }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
-    if (!username.trim() || !password.trim()) { setError('Fill all fields'); return; }
-    if (mode === 'register' && !referralCode.trim()) { setError('Referral code required'); return; }
-    const fn = mode === 'login' ? onLogin : onRegister;
-    const ok = await fn(username.trim(), password, referralCode.trim());
-    if (ok === true) return;
-    setError(typeof ok === 'string' ? ok : (mode === 'login' ? 'Invalid credentials' : 'Registration failed'));
+    if (mode === 'login') {
+      if ((!email.trim() && !username.trim()) || !password.trim()) { setError('Fill all fields'); return; }
+      const fn = onLogin;
+      const ok = await fn(email.trim() || username.trim(), password);
+      if (ok === true) return;
+      setError(typeof ok === 'string' ? ok : 'Invalid credentials');
+    } else {
+      if (!email.trim() || !username.trim() || !password.trim()) { setError('Fill all fields'); return; }
+      if (!referralCode.trim()) { setError('Referral code required'); return; }
+      const ok = await onRegister(username.trim(), email.trim(), password, referralCode.trim());
+      if (ok === true) return;
+      setError(typeof ok === 'string' ? ok : 'Registration failed');
+    }
   };
 
   return (
@@ -697,17 +711,27 @@ function AuthModal({ onLogin, onRegister, onClose, onLogout, user }) {
             <div style={{ textAlign: 'center', padding: 20 }}>
               <div className="friend-avatar" style={{ width: 48, height: 48, fontSize: 20, margin: '0 auto 12px', background: user.color }}>{user.username[0]}</div>
               <h3>{user.username}</h3>
+              {user.email && <p className="text-secondary">{user.email}</p>}
             </div>
             <button className="btn-secondary" onClick={onLogout}>Sign Out</button>
           </div>
         ) : (
           <form className="auth-form" onSubmit={handleSubmit}>
-            <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" />
+            {mode === 'login' ? (
+              <>
+                <input value={email} onChange={e => { setEmail(e.target.value); setUsername(''); }} placeholder="Email or username" />
+              </>
+            ) : (
+              <>
+                <input value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="Email" />
+                <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" />
+                <input value={referralCode} onChange={e => setReferralCode(e.target.value)} placeholder="Referral code" />
+              </>
+            )}
             <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Password" />
-            {mode === 'register' && <input value={referralCode} onChange={e => setReferralCode(e.target.value)} placeholder="Referral code" />}
             {error && <p className="auth-error">{error}</p>}
             <button type="submit" className="btn-primary">{mode === 'login' ? 'Sign In' : 'Register'}</button>
-            <button type="button" className="btn-secondary" onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); }}>
+            <button type="button" className="btn-secondary" onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); setEmail(''); setUsername(''); setPassword(''); setReferralCode(''); }}>
               {mode === 'login' ? 'Create account' : 'Already have an account'}
             </button>
           </form>
