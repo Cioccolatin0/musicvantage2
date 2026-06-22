@@ -107,7 +107,7 @@ async function search(query, type = 'all') {
     } catch {}
   }
 
-  return { tracks, albums: albums.slice(0, 4), artists: artists.slice(0, 4) };
+  return { tracks: tracks.filter(t => !t.duration || t.duration <= 420), albums: albums.slice(0, 4), artists: artists.slice(0, 4) };
 }
 
 async function getVideoInfo(videoId) {

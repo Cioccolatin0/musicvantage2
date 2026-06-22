@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getNotifications, markNotificationRead } from '../api';
+import { IconUser, IconPlaylist, IconMusicNote, IconBell } from '../Icons';
 
 export default function Notifications({ userId, onClose, onAcceptFriend, onViewPlaylist }) {
   const [notifs, setNotifs] = useState([]);
@@ -30,7 +31,7 @@ export default function Notifications({ userId, onClose, onAcceptFriend, onViewP
             {notifs.map(n => (
               <div key={n.id} className="notif-item" onClick={() => markRead(n)}>
                 <div className="notif-icon">
-                  {n.type === 'friend_request' ? '👤' : n.type === 'playlist_share' ? '📋' : n.type === 'playlist_update' ? '🎵' : '🔔'}
+                  {n.type === 'friend_request' ? <IconUser size={18} /> : n.type === 'playlist_share' ? <IconPlaylist size={18} /> : n.type === 'playlist_update' ? <IconMusicNote size={18} /> : <IconBell size={18} />}
                 </div>
                 <div className="notif-body">
                   <p>{n.type === 'friend_request' ? 'New friend request' : n.type === 'playlist_share' ? `Playlist shared with you` : n.type === 'playlist_update' ? 'Playlist updated' : 'Notification'}</p>

@@ -14,7 +14,7 @@ import Friends from './components/Friends';
 import Notifications from './components/Notifications';
 import JamSession from './components/JamSession';
 import MobileNav from './components/MobileNav';
-import { IconSearch, IconAdmin, IconImport } from './Icons';
+import { IconSearch, IconAdmin, IconImport, IconHome, IconChat, IconFriends, IconJam, IconPlaylist, IconQueue, IconLyrics, IconBell, IconUser } from './Icons';
 
 function App() {
   const [query, setQuery] = useState('');
@@ -182,6 +182,18 @@ function App() {
   useEffect(() => { playNextRef.current = playNext; }, [playNext]);
   useEffect(() => { try { if (ytPlayerRef.current?.setVolume) ytPlayerRef.current.setVolume(volume * 100); } catch {} }, [volume]);
 
+  const togglePlayRef = useRef(togglePlay);
+  useEffect(() => { togglePlayRef.current = togglePlay; }, [togglePlay]);
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.code === 'Space') { e.preventDefault(); togglePlayRef.current(); }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
   const toggleShuffle = () => setShuffle(s => !s);
   const toggleRepeat = () => setRepeat(r => r === 'off' ? 'all' : r === 'all' ? 'one' : 'off');
   const removeFromQueue = (idx) => setQueue(q => q.filter((_, i) => i !== idx));
@@ -240,31 +252,31 @@ function App() {
         <div className="sidebar-logo">{!sidebarCollapsed ? 'Soundusic' : 'S'}</div>
         <div className="sidebar-links">
           <div className={`sidebar-link ${activeView === 'home' ? 'active' : ''}`} onClick={() => handleNavigate('home')}>
-            <span className="icon">🏠</span><span>Home</span>
+            <span className="icon"><IconHome /></span><span>Home</span>
           </div>
           <div className={`sidebar-link ${activeView === 'social' ? 'active' : ''}`} onClick={() => handleNavigate('social')}>
-            <span className="icon">💬</span><span>Social</span>
+            <span className="icon"><IconChat /></span><span>Social</span>
           </div>
           <div className={`sidebar-link ${activeView === 'friends' ? 'active' : ''}`} onClick={() => handleNavigate('friends')}>
-            <span className="icon">🤝</span><span>Friends</span>
+            <span className="icon"><IconFriends /></span><span>Friends</span>
           </div>
           <div className={`sidebar-link ${activeView === 'jam' ? 'active' : ''}`} onClick={() => handleNavigate('jam')}>
-            <span className="icon">🎧</span><span>Jam</span>
+            <span className="icon"><IconJam /></span><span>Jam</span>
           </div>
           <div className={`sidebar-link ${activeView === 'playlists' ? 'active' : ''}`} onClick={() => handleNavigate('playlists')}>
-            <span className="icon">📋</span><span>Playlists</span>
+            <span className="icon"><IconPlaylist /></span><span>Playlists</span>
           </div>
           <div className={`sidebar-link ${activeView === 'queue' ? 'active' : ''}`} onClick={() => handleNavigate('queue')}>
-            <span className="icon">🎵</span><span>Queue</span>
+            <span className="icon"><IconQueue /></span><span>Queue</span>
           </div>
           <div className={`sidebar-link ${activeView === 'lyrics' ? 'active' : ''}`} onClick={() => handleNavigate('lyrics')}>
-            <span className="icon">📝</span><span>Lyrics</span>
+            <span className="icon"><IconLyrics /></span><span>Lyrics</span>
           </div>
           <div className={`sidebar-link ${activeView === 'import' ? 'active' : ''}`} onClick={() => handleNavigate('import')}>
-            <span className="icon">📥</span><span>Import</span>
+            <span className="icon"><IconImport /></span><span>Import</span>
           </div>
           <div className={`sidebar-link ${activeView === 'admin' ? 'active' : ''}`} onClick={() => handleNavigate('admin')}>
-            <span className="icon">⚙️</span><span>Admin</span>
+            <span className="icon"><IconAdmin /></span><span>Admin</span>
           </div>
         </div>
         <div className="sidebar-auth">
@@ -295,10 +307,10 @@ function App() {
             {user && (
               <>
                 <button className="icon-btn" onClick={() => setShowNotifs(true)} title="Notifications" style={{ position: 'relative' }}>
-                  <span style={{ fontSize: 18 }}>🔔</span>
+                  <IconBell size={18} />
                   {notifs.length > 0 && <span style={{ position: 'absolute', top: 0, right: 0, background: 'var(--primary)', color: '#fff', fontSize: 9, width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{notifs.length}</span>}
                 </button>
-                <button className="icon-btn" onClick={() => { setShowChat(true); setShowNotifs(false); }} title="Chat"><span style={{ fontSize: 18 }}>💬</span></button>
+                <button className="icon-btn" onClick={() => { setShowChat(true); setShowNotifs(false); }} title="Chat"><IconChat size={18} /></button>
               </>
             )}
             {!user && <button className="btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setShowAuth(true)}>Sign In</button>}
@@ -314,15 +326,15 @@ function App() {
                   <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>Chat with friends or start a conversation</p>
                   <div className="friend-list" style={{ maxWidth: 300, margin: '0 auto' }}>
                     <div className="friend-item" onClick={() => setShowChat(true)} style={{ cursor: 'pointer' }}>
-                      <span style={{ fontSize: 24 }}>💬</span>
+                      <IconChat size={24} />
                       <div className="friend-info"><strong>Open Chat</strong></div>
                     </div>
                     <div className="friend-item" onClick={() => handleNavigate('friends')} style={{ cursor: 'pointer' }}>
-                      <span style={{ fontSize: 24 }}>🤝</span>
+                      <IconFriends size={24} />
                       <div className="friend-info"><strong>Friends</strong></div>
                     </div>
                     <div className="friend-item" onClick={() => handleNavigate('jam')} style={{ cursor: 'pointer' }}>
-                      <span style={{ fontSize: 24 }}>🎧</span>
+                      <IconJam size={24} />
                       <div className="friend-info"><strong>Jam Sessions</strong></div>
                     </div>
                   </div>
@@ -347,7 +359,7 @@ function App() {
                   {playlists.map((pl, i) => (
                     <div key={i} className="playlist-card" onClick={() => playTrack(pl.tracks[0], pl.tracks)}>
                       <div className="playlist-card-img">
-                        {pl.tracks[0] ? <img src={pl.tracks[0].thumbnail} alt="" /> : <div className="playlist-placeholder">🎵</div>}
+                        {pl.tracks[0] ? <img src={pl.tracks[0].thumbnail} alt="" /> : <div className="playlist-placeholder"><IconMusicNote size={24} /></div>}
                       </div>
                       <div className="playlist-card-body"><h4>{pl.name}</h4><p>{pl.tracks.length} tracks</p></div>
                     </div>
@@ -467,7 +479,7 @@ function App() {
                           const isLoading = loadingTrack === t.id;
                           return (
                             <div key={t.id} className={`track-item ${isActive ? 'active' : ''} ${isLoading ? 'loading' : ''}`} onClick={() => playTrack(t, tracks)}>
-                              <span className="track-num">{isLoading ? <div className="spinner sm" /> : isActive && playing ? '♪' : i + 1}</span>
+                              <span className="track-num">{isLoading ? <div className="spinner sm" /> : isActive && playing ? <IconMusicNote size={14} /> : i + 1}</span>
                               <img src={t.thumbnail} alt={t.title} loading="lazy" />
                               <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
                               <span className="track-duration">{formatDuration(t.duration)}</span>
