@@ -22,7 +22,7 @@ async function init() {
 
 async function getInnertube() {
   if (innertube) return innertube;
-  if (!initPromise) initPromise = init();
+  if (!initPromise) initPromise = init().then(() => innertube);
   return initPromise;
 }
 
