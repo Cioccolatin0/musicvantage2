@@ -174,6 +174,34 @@ app.get('/api/search', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/debug/search', async (req, res) => {
+  try {
+    const q = req.query.q || 'test';
+    const { getInnertube } = require('./ytmusic');
+    const yt = await getInnertube();
+    const results = await yt.music.search(q);
+    const items = [];
+    for (const section of results.contents) {
+      if (!section.contents) continue;
+      for (const item of section.contents) {
+        items.push({
+          id: item.id,
+          type: item.type,
+          item_type: item.item_type,
+          title: item.title || item.name,
+          duration: item.duration,
+          duration_type: typeof item.duration,
+          thumbnails: item.thumbnails,
+          artists: item.artists,
+          authors: item.authors,
+          keys: Object.keys(item).slice(0, 30)
+        });
+      }
+    }
+    res.json(items.slice(0, 3));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/info/:id', async (req, res) => {
   try {
     let info;

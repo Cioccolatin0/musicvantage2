@@ -27,8 +27,29 @@ async function getInnertube() {
 }
 
 function thumbUrl(item) {
-  if (!item.id) return '';
-  return `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
+  if (item.thumbnails && item.thumbnails.length > 0) {
+    const thumbs = item.thumbnails;
+    return thumbs[thumbs.length - 1].url || thumbs[0].url;
+  }
+  if (item.id && item.id.length === 11 && /^[a-zA-Z0-9_-]+$/.test(item.id)) {
+    return `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
+  }
+  return `https://i.ytimg.com/vi/${item.id || 'default'}/hqdefault.jpg`;
+}
+
+function parseDuration(dur) {
+  if (typeof dur === 'number') return dur;
+  if (dur && typeof dur === 'object') {
+    if (dur.seconds) return parseInt(dur.seconds) || 0;
+    if (dur.text) return parseDuration(dur.text);
+    if (dur.length_seconds) return parseInt(dur.length_seconds) || 0;
+  }
+  if (typeof dur === 'string' && dur.includes(':')) {
+    const parts = dur.split(':').map(Number);
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  return 0;
 }
 
 function getArtist(item) {
@@ -56,7 +77,7 @@ async function search(query, type = 'all') {
             title: item.title || 'Unknown',
             artist: getArtist(item),
             thumbnail: thumbUrl(item),
-            duration: item.duration || 0,
+            duration: parseDuration(item.duration),
             url: `https://youtube.com/watch?v=${item.id}`,
             type: 'track'
           });
@@ -95,7 +116,7 @@ async function getVideoInfo(videoId) {
       title: b.title || info.title || 'Unknown',
       artist: b.channel?.[0]?.name || info.author?.name || (info.primary_info?.title?.runs?.[0]?.text) || 'Unknown',
       thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-      duration: b.duration || 0,
+      duration: parseDuration(b.duration || info.duration),
       description: b.description || info.description || '',
       webpage_url: `https://youtube.com/watch?v=${videoId}`
     };
@@ -120,4 +141,4 @@ async function getLyrics(videoId) {
   return null;
 }
 
-module.exports = { search, getVideoInfo, getLyrics };
+module.exports = { search, getVideoInfo, getLyrics, getInnertube };
