@@ -13,6 +13,7 @@
     "node-fetch": "^2.7.0",
     "pg": "^8.22.0",
     "socket.io": "^4.7.5",
-    "ytdl-core": "^4.11.5"
+    "ytdl-core": "^4.11.5",
+    "youtubei.js": "^17.0.0"
   }
 }
