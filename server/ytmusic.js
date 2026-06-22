@@ -94,59 +94,110 @@ async function search(query, type = 'all') {
   const albums = [];
   const artists = [];
   const seenTracks = new Set();
+  const seenAlbums = new Set();
+  const seenArtists = new Set();
 
-  for (const section of results.contents) {
+  function processSongItems(items) {
+    if (!items) return;
+    for (const item of items) {
+      if (!item || !item.id) continue;
+      const dur = parseDuration(item.duration);
+      const titleStr = (item.title || '').toString();
+      const titleLower = titleStr.toLowerCase();
+      if (seenTracks.has(item.id)) continue;
+      const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
+      const isLong = dur > 420;
+      if (!isMix && !isLong) {
+        seenTracks.add(item.id);
+        allTracks.push({
+          id: item.id,
+          title: titleStr || 'Unknown',
+          artist: getArtist(item),
+          thumbnail: thumbUrl(item),
+          duration: dur,
+          url: `https://youtube.com/watch?v=${item.id}`,
+          type: 'track'
+        });
+      }
+    }
+  }
+
+  const songsShelf = results.songs;
+  if (songsShelf && songsShelf.contents) {
+    processSongItems(songsShelf.contents);
+  }
+
+  const videosShelf = results.videos;
+  if (videosShelf && videosShelf.contents) {
+    processSongItems(videosShelf.contents);
+  }
+
+  const albumsShelf = results.albums;
+  if (albumsShelf && albumsShelf.contents) {
+    for (const item of albumsShelf.contents) {
+      if (!item || !item.id || seenAlbums.has(item.id)) continue;
+      seenAlbums.add(item.id);
+      const artist = item.artists?.[0]?.name || getArtist(item);
+      albums.push({
+        id: item.id,
+        title: (item.title || 'Unknown').toString(),
+        artist,
+        thumbnail: thumbUrl(item),
+        trackCount: item.song_count || item.track_count || 0,
+        type: 'album'
+      });
+    }
+  }
+
+  const artistsShelf = results.artists;
+  if (artistsShelf && artistsShelf.contents) {
+    for (const item of artistsShelf.contents) {
+      if (!item || !item.id || seenArtists.has(item.id)) continue;
+      seenArtists.add(item.id);
+      artists.push({
+        id: item.id,
+        title: (item.name || item.title || 'Unknown').toString(),
+        thumbnail: thumbUrl(item),
+        trackCount: 0,
+        type: 'artist'
+      });
+    }
+  }
+
+  for (const section of results.contents || []) {
     try {
       if (!section.contents) continue;
-      for (const item of section.contents) {
-        if (!item || !item.id) continue;
-        if (item.type !== 'MusicResponsiveListItem') continue;
-
-        const itemType = item.item_type || item.type || '';
-        const isSong = itemType === 'song' || itemType === 'video' || itemType === 'MusicResponsiveListItem';
-        const isAlbum = itemType === 'album';
-        const isArtist = itemType === 'artist';
-
-        const dur = parseDuration(item.duration);
-        const thumb = thumbUrl(item);
-        const artist = getArtist(item);
-        const titleStr = (item.title || '').toString();
-        const titleLower = titleStr.toLowerCase();
-
-        if (isAlbum) {
+      const sectionTitle = (section.title || '').toString().toLowerCase();
+      if (sectionTitle === 'songs' || sectionTitle === 'videos') {
+        processSongItems(section.contents);
+      } else if (sectionTitle === 'albums') {
+        for (const item of section.contents) {
+          if (!item || !item.id || seenAlbums.has(item.id)) continue;
+          seenAlbums.add(item.id);
+          const artist = item.artists?.[0]?.name || getArtist(item);
           albums.push({
             id: item.id,
-            title: titleStr || 'Unknown',
+            title: (item.title || 'Unknown').toString(),
             artist,
-            thumbnail: thumb,
+            thumbnail: thumbUrl(item),
             trackCount: item.song_count || item.track_count || 0,
             type: 'album'
           });
-        } else if (isArtist) {
+        }
+      } else if (sectionTitle === 'artists') {
+        for (const item of section.contents) {
+          if (!item || !item.id || seenArtists.has(item.id)) continue;
+          seenArtists.add(item.id);
           artists.push({
             id: item.id,
-            title: item.name || item.title || 'Unknown',
-            thumbnail: thumb,
+            title: (item.name || item.title || 'Unknown').toString(),
+            thumbnail: thumbUrl(item),
             trackCount: 0,
             type: 'artist'
           });
-        } else if (isSong) {
-          if (seenTracks.has(item.id)) continue;
-          const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
-          const isLong = dur > 420;
-          if (!isMix && !isLong) {
-            seenTracks.add(item.id);
-            allTracks.push({
-              id: item.id,
-              title: titleStr || 'Unknown',
-              artist,
-              thumbnail: thumb,
-              duration: dur,
-              url: `https://youtube.com/watch?v=${item.id}`,
-              type: 'track'
-            });
-          }
         }
+      } else if (!sectionTitle || sectionTitle === 'top result') {
+        processSongItems(section.contents);
       }
     } catch {}
   }
@@ -206,13 +257,11 @@ async function getRelatedTracks(artistName) {
     const results = await yt.music.search(artistName);
     const tracks = [];
     const seen = new Set();
-    for (const section of results.contents) {
-      if (!section.contents) continue;
-      for (const item of section.contents) {
-        if (!item || !item.id || item.type !== 'MusicResponsiveListItem') continue;
-        const itemType = item.item_type || item.type || '';
-        const isSong = itemType === 'song' || itemType === 'video' || itemType === 'MusicResponsiveListItem';
-        if (!isSong) continue;
+
+    function processItems(items) {
+      if (!items) return;
+      for (const item of items) {
+        if (!item || !item.id) continue;
         const titleLower = (item.title || '').toString().toLowerCase();
         const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
         const dur = parseDuration(item.duration);
@@ -230,6 +279,13 @@ async function getRelatedTracks(artistName) {
           type: 'track'
         });
       }
+    }
+
+    if (results.songs?.contents) processItems(results.songs.contents);
+    if (results.videos?.contents) processItems(results.videos.contents);
+    for (const section of results.contents || []) {
+      if (!section.contents) continue;
+      processItems(section.contents);
     }
     return tracks.slice(0, 20);
   } catch { return []; }
