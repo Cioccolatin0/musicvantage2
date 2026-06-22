@@ -106,11 +106,13 @@ function App() {
     setLoading(true); setError(''); setActiveView('home');
     if (!skipCache) {
       const cached = getCachedSearch(q);
-      if (cached) { setResults(cached); setLoading(false); return; }
+      if (cached && (cached.mainTrack || (cached.tracks && cached.tracks.length > 0))) {
+        setResults(cached); setLoading(false); return;
+      }
     }
     try {
       const res = await search(q, f);
-      setCachedSearch(q, res);
+      if (res.mainTrack || (res.tracks && res.tracks.length > 0)) setCachedSearch(q, res);
       setResults(res);
     } catch (e) { setError(e.message || 'Search failed'); }
     finally { setLoading(false); }

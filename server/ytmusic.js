@@ -133,7 +133,8 @@ async function search(query, type = 'all') {
         } else if (isSong) {
           if (seenTracks.has(item.id)) continue;
           const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
-          if (dur > 0 && dur <= 420 && !isMix) {
+          const isLong = dur > 420;
+          if (!isMix && !isLong) {
             seenTracks.add(item.id);
             allTracks.push({
               id: item.id,
@@ -215,7 +216,7 @@ async function getRelatedTracks(artistName) {
         const titleLower = (item.title || '').toString().toLowerCase();
         const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
         const dur = parseDuration(item.duration);
-        if (!dur || dur > 420 || seen.has(item.id) || isMix) continue;
+        if (dur > 420 || seen.has(item.id) || isMix) continue;
         const artist = getArtist(item);
         if (artist.toLowerCase() !== artistName.toLowerCase()) continue;
         seen.add(item.id);
