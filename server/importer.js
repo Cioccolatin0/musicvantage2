@@ -65,7 +65,7 @@ async function ytSearchOne(query) {
 async function importFromYoutube(url) {
   const raw = await runYtDlp([
     '--flat-playlist', '--dump-json', '--no-warnings', url
-  ], 60000);
+  ], 180000);
 
   const tracks = parseYtDlpJson(raw);
   let name = 'Imported Playlist';
@@ -131,22 +131,26 @@ async function importFromAppleMusic(url) {
   }
 
   const tracks = [];
-  for (const s of songData) {
-    const query = `${s.name} ${s.artist}`;
-    try {
+  const BATCH = 5;
+  for (let i = 0; i < songData.length; i += BATCH) {
+    const batch = songData.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map(async (s) => {
+      const query = `${s.name} ${s.artist}`;
       const yt = await ytSearchOne(query);
-      if (yt) {
-        tracks.push({
-          id: yt.id,
-          title: s.name,
-          artist: s.artist,
-          thumbnail: `https://i.ytimg.com/vi/${yt.id}/hqdefault.jpg`,
-          duration: yt.duration || 0,
-          url: `https://youtube.com/watch?v=${yt.id}`,
-          type: 'track'
-        });
-      }
-    } catch {}
+      if (!yt) return null;
+      return {
+        id: yt.id,
+        title: s.name,
+        artist: s.artist,
+        thumbnail: `https://i.ytimg.com/vi/${yt.id}/hqdefault.jpg`,
+        duration: yt.duration || 0,
+        url: `https://youtube.com/watch?v=${yt.id}`,
+        type: 'track'
+      };
+    }));
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) tracks.push(r.value);
+    }
   }
 
   if (tracks.length === 0) throw new Error('Could not extract tracks from Apple Music page');
@@ -155,23 +159,27 @@ async function importFromAppleMusic(url) {
 
 async function importFromTracks(trackList) {
   const tracks = [];
-  for (const item of trackList) {
-    const query = typeof item === 'string' ? item : `${item.title || ''} ${item.artist || ''}`;
-    if (!query.trim()) continue;
-    try {
+  const BATCH = 5;
+  for (let i = 0; i < trackList.length; i += BATCH) {
+    const batch = trackList.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map(async (item) => {
+      const query = typeof item === 'string' ? item : `${item.title || ''} ${item.artist || ''}`;
+      if (!query.trim()) return null;
       const yt = await ytSearchOne(query);
-      if (yt) {
-        tracks.push({
-          id: yt.id,
-          title: typeof item === 'string' ? query : item.title || yt.title || 'Unknown',
-          artist: typeof item === 'object' ? (item.artist || yt.uploader || 'Unknown') : (yt.uploader || 'Unknown'),
-          thumbnail: `https://i.ytimg.com/vi/${yt.id}/hqdefault.jpg`,
-          duration: yt.duration || 0,
-          url: `https://youtube.com/watch?v=${yt.id}`,
-          type: 'track'
-        });
-      }
-    } catch {}
+      if (!yt) return null;
+      return {
+        id: yt.id,
+        title: typeof item === 'string' ? query : item.title || yt.title || 'Unknown',
+        artist: typeof item === 'object' ? (item.artist || yt.uploader || 'Unknown') : (yt.uploader || 'Unknown'),
+        thumbnail: `https://i.ytimg.com/vi/${yt.id}/hqdefault.jpg`,
+        duration: yt.duration || 0,
+        url: `https://youtube.com/watch?v=${yt.id}`,
+        type: 'track'
+      };
+    }));
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) tracks.push(r.value);
+    }
   }
   return { tracks, name: 'Custom List' };
 }
@@ -187,7 +195,7 @@ async function importFromSpotify(url) {
       'Accept': 'text/html,application/xhtml+xml',
       'Accept-Language': 'en-US,en;q=0.9'
     },
-    signal: AbortSignal.timeout(20000)
+    signal: AbortSignal.timeout(30000)
   }).then(r => r.text()).catch(() => '');
 
   if (!html) throw new Error('Could not fetch Spotify page');
@@ -250,22 +258,26 @@ async function importFromSpotify(url) {
   if (songData.length === 0) throw new Error('Could not extract tracks from Spotify page');
 
   const tracks = [];
-  for (const s of songData) {
-    const query = `${s.name} ${s.artist}`;
-    try {
+  const BATCH = 5;
+  for (let i = 0; i < songData.length; i += BATCH) {
+    const batch = songData.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map(async (s) => {
+      const query = `${s.name} ${s.artist}`;
       const yt = await ytSearchOne(query);
-      if (yt) {
-        tracks.push({
-          id: yt.id,
-          title: s.name,
-          artist: s.artist,
-          thumbnail: `https://i.ytimg.com/vi/${yt.id}/hqdefault.jpg`,
-          duration: yt.duration || 0,
-          url: `https://youtube.com/watch?v=${yt.id}`,
-          type: 'track'
-        });
-      }
-    } catch {}
+      if (!yt) return null;
+      return {
+        id: yt.id,
+        title: s.name,
+        artist: s.artist,
+        thumbnail: `https://i.ytimg.com/vi/${yt.id}/hqdefault.jpg`,
+        duration: yt.duration || 0,
+        url: `https://youtube.com/watch?v=${yt.id}`,
+        type: 'track'
+      };
+    }));
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value) tracks.push(r.value);
+    }
   }
 
   return { tracks, name, sourceName: `Spotify — ${name}` };

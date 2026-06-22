@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket, getStreamUrl } from './api';
 import { formatDuration } from './utils';
 import { getCachedSearch, setCachedSearch, getRecentTracks, addRecentTrack, getDownloads, addDownload, removeDownload, isDownloaded } from './cache';
+
+function getFavorites() { try { return JSON.parse(localStorage.getItem('sv_favorites') || '[]'); } catch { return []; } }
+function saveFavorites(favs) { try { localStorage.setItem('sv_favorites', JSON.stringify(favs)); } catch {} }
 import Sidebar from './Sidebar';
 import PlayerBar from './PlayerBar';
 import QueuePanel from './QueuePanel';
@@ -49,10 +52,12 @@ function App() {
   const [showChat, setShowChat] = useState(false);
   const [notifs, setNotifs] = useState([]);
   const [showNotifs, setShowNotifs] = useState(false);
+  const [showImportInPlaylists, setShowImportInPlaylists] = useState(false);
   const [artistInfo, setArtistInfo] = useState(null);
   const [artistLoading, setArtistLoading] = useState(false);
   const [recentTracks, setRecentTracks] = useState(() => getRecentTracks());
   const [downloads, setDownloads] = useState(() => getDownloads());
+  const [favorites, setFavorites] = useState(() => getFavorites());
   const [recommended, setRecommended] = useState([]);
 
   const ytPlayerRef = useRef(null);
@@ -164,7 +169,7 @@ function App() {
     if (trackList) setQueue(trackList);
     setCurrentTrack(track); setLoadingTrack(track.id); setPlaying(false);
     setLoadingStream(true); setStreamError(false); setCurrentTime(0); setDuration(0);
-    setLyrics(null); setLiked(false);
+    setLyrics(null); setLiked(favorites.some(t => t.id === track.id));
     addRecentTrack(track);
     setRecentTracks(getRecentTracks());
   }, [currentTrack?.id]);
@@ -348,6 +353,14 @@ function App() {
     if (isDownloaded(track.id)) { removeDownload(track.id); } else { addDownload(track); }
     setDownloads(getDownloads());
   };
+  const toggleFavorite = (track) => {
+    const favs = getFavorites();
+    const exists = favs.find(t => t.id === track.id);
+    const updated = exists ? favs.filter(t => t.id !== track.id) : [...favs, { id: track.id, title: track.title, artist: track.artist, thumbnail: track.thumbnail, duration: track.duration }];
+    saveFavorites(updated);
+    setFavorites(updated);
+    if (currentTrack?.id === track.id) setLiked(!exists);
+  };
 
   // Social auth
   const handleRegister = async (username, email, password, referralCode) => {
@@ -414,9 +427,6 @@ function App() {
           <div className={`sidebar-link ${activeView === 'home' ? 'active' : ''}`} onClick={() => handleNavigate('home')}>
             <span className="icon"><IconHome /></span><span>Home</span>
           </div>
-          <div className={`sidebar-link ${activeView === 'social' ? 'active' : ''}`} onClick={() => handleNavigate('social')}>
-            <span className="icon"><IconChat /></span><span>Social</span>
-          </div>
           <div className={`sidebar-link ${activeView === 'friends' ? 'active' : ''}`} onClick={() => handleNavigate('friends')}>
             <span className="icon"><IconFriends /></span><span>Friends</span>
           </div>
@@ -425,12 +435,6 @@ function App() {
           </div>
           <div className={`sidebar-link ${activeView === 'playlists' ? 'active' : ''}`} onClick={() => handleNavigate('playlists')}>
             <span className="icon"><IconPlaylist /></span><span>Playlists</span>
-          </div>
-          <div className={`sidebar-link ${activeView === 'queue' ? 'active' : ''}`} onClick={() => handleNavigate('queue')}>
-            <span className="icon"><IconQueue /></span><span>Queue</span>
-          </div>
-          <div className={`sidebar-link ${activeView === 'import' ? 'active' : ''}`} onClick={() => handleNavigate('import')}>
-            <span className="icon"><IconImport /></span><span>Import</span>
           </div>
           <div className={`sidebar-link ${activeView === 'admin' ? 'active' : ''}`} onClick={() => handleNavigate('admin')}>
             <span className="icon"><IconAdmin /></span><span>Admin</span>
@@ -510,8 +514,20 @@ function App() {
 
           {activeView === 'playlists' && (
             <div className="playlists-view">
-              <div className="section-header"><h2>Your Playlists</h2></div>
-              {playlists.length === 0 ? <p className="panel-empty">No playlists yet</p> : (
+              <div className="section-header">
+                <h2>Your Playlists</h2>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => {
+                    const name = prompt('Playlist name:');
+                    if (name?.trim()) createPlaylist(name.trim());
+                  }}>+ New Playlist</button>
+                  <button className="btn-secondary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={() => setShowImportInPlaylists(s => !s)}>
+                    {showImportInPlaylists ? 'Hide Import' : 'Import'}
+                  </button>
+                </div>
+              </div>
+              {showImportInPlaylists && <ImportPlaylist onPlayTrack={playTrack} />}
+              {playlists.length === 0 && !showImportInPlaylists ? <p className="panel-empty">No playlists yet</p> : (
                 <div className="playlists-grid">
                   {playlists.map((pl, i) => (
                     <div key={i} className="playlist-card" onClick={() => playTrack(pl.tracks[0], pl.tracks)}>
@@ -638,6 +654,26 @@ function App() {
                               <span className="track-duration">{formatDuration(t.duration)}</span>
                               <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleDownload(t); }} title="Remove download">
                                 <svg style={{ width: 16, height: 16, fill: 'var(--primary)' }} viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+                  {favorites.length > 0 && (
+                    <section className="section">
+                      <h3>Favorites</h3>
+                      <div className="track-list">
+                        {favorites.slice(0, 8).map((t, i) => {
+                          const isActive = currentTrack?.id === t.id;
+                          return (
+                            <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, favorites)}>
+                              <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                              <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                              <span className="track-duration">{formatDuration(t.duration)}</span>
+                              <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleFavorite(t); }} title="Remove from favorites">
+                                <svg style={{ width: 16, height: 16, fill: 'var(--primary)' }} viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                               </button>
                             </div>
                           );
@@ -837,7 +873,7 @@ function App() {
           onOpenLyrics={() => setShowLyrics(true)}
           onOpenQueue={() => setShowQueue(true)}
           onOpenPlaylists={() => setShowPlaylists(true)}
-          onToggleLike={() => setLiked(l => !l)}
+          onToggleLike={() => currentTrack && toggleFavorite(currentTrack)}
           onToggleMode={() => setPlayMode(m => m === 'music' ? 'video' : 'music')}
           lyrics={lyrics}
           showLyrics={showLyrics}

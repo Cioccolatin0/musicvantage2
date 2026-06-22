@@ -29,7 +29,8 @@ export default function ImportPlaylist({ onPlayTrack }) {
       const res = await authFetch('/api/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(600000)
       });
       if (!res.ok) {
         const err = await res.json();
