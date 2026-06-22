@@ -62,11 +62,34 @@ function getArtist(item) {
   return 'Unknown';
 }
 
+const VARIATION_KEYWORDS = ['remix', 'sped up', 'slowed', 'reverb', 'acoustic', 'live', 'cover', 'version', 'extended', 'edit', 'instrumental', 'karaoke', 'nightcore', 'trap', 'lo-fi', 'lofi', 'piano', 'orchestral', 'unplugged', 'mashup', 'flip', 'bootleg', 'vip'];
+
+function stripVariation(title) {
+  let clean = title.toLowerCase();
+  for (const kw of VARIATION_KEYWORDS) {
+    clean = clean.replace(new RegExp(`\\b${kw}\\b`, 'gi'), '');
+  }
+  clean = clean.replace(/[-()[\]{}!@#$%^&*+=|\\:;"'<>,.?/~`]/g, ' ').replace(/\s+/g, ' ').trim();
+  return clean;
+}
+
+function isVariation(title) {
+  const lower = title.toLowerCase();
+  return VARIATION_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+function similarity(a, b) {
+  const wordsA = a.toLowerCase().split(/\s+/);
+  const wordsB = b.toLowerCase().split(/\s+/);
+  const intersection = wordsA.filter(w => wordsB.includes(w) && w.length > 2);
+  return intersection.length / Math.max(wordsA.length, wordsB.length);
+}
+
 async function search(query, type = 'all') {
   const yt = await getInnertube();
   const results = await yt.music.search(query);
 
-  const tracks = [];
+  const allTracks = [];
   const albums = [];
   const artists = [];
   const seenTracks = new Set();
@@ -89,31 +112,28 @@ async function search(query, type = 'all') {
         const thumb = thumbUrl(item);
         const artist = getArtist(item);
 
-        if (isSong || isArtist) {
-          const title = (item.title || item.name || 'Unknown').toString();
-          if (isSong) {
-            if (seenTracks.has(item.id)) continue;
-            if (dur > 0 && dur <= 420) {
-              seenTracks.add(item.id);
-              tracks.push({
-                id: item.id,
-                title,
-                artist,
-                thumbnail: thumb,
-                duration: dur,
-                url: `https://youtube.com/watch?v=${item.id}`,
-                type: 'track'
-              });
-            }
-          } else {
-            artists.push({
+        if (isSong) {
+          if (seenTracks.has(item.id)) continue;
+          if (dur > 0 && dur <= 420) {
+            seenTracks.add(item.id);
+            allTracks.push({
               id: item.id,
-              title: item.name || item.title || 'Unknown',
+              title: (item.title || 'Unknown').toString(),
+              artist,
               thumbnail: thumb,
-              trackCount: 0,
-              type: 'artist'
+              duration: dur,
+              url: `https://youtube.com/watch?v=${item.id}`,
+              type: 'track'
             });
           }
+        } else if (isArtist) {
+          artists.push({
+            id: item.id,
+            title: item.name || item.title || 'Unknown',
+            thumbnail: thumb,
+            trackCount: 0,
+            type: 'artist'
+          });
         } else if (isAlbum) {
           albums.push({
             id: item.id,
@@ -128,11 +148,85 @@ async function search(query, type = 'all') {
     } catch {}
   }
 
+  let mainTrack = null;
+  const variations = [];
+  const relatedTracks = [];
+  const similarTracks = [];
+  const queryLower = query.toLowerCase().trim();
+  const usedIds = new Set();
+
+  for (const t of allTracks) {
+    const titleLower = t.title.toLowerCase();
+    if (!mainTrack && (titleLower.includes(queryLower) || queryLower.includes(titleLower) || similarity(query, t.title) > 0.5)) {
+      mainTrack = t;
+      usedIds.add(t.id);
+      continue;
+    }
+    if (mainTrack && !usedIds.has(t.id)) {
+      const isVar = isVariation(t.title) && (similarity(t.title, mainTrack.title) > 0.4 || t.artist.toLowerCase() === mainTrack.artist.toLowerCase());
+      const isSameArtist = t.artist.toLowerCase() === mainTrack.artist.toLowerCase();
+      if (isVar || isSameArtist) {
+        variations.push(t);
+        usedIds.add(t.id);
+      }
+    }
+  }
+
+  for (const t of allTracks) {
+    if (usedIds.has(t.id)) continue;
+    if (mainTrack && t.artist.toLowerCase() === mainTrack.artist.toLowerCase()) {
+      relatedTracks.push(t);
+      usedIds.add(t.id);
+    }
+  }
+
+  for (const t of allTracks) {
+    if (usedIds.has(t.id)) continue;
+    similarTracks.push(t);
+    usedIds.add(t.id);
+  }
+
   return {
-    tracks: tracks.slice(0, 20),
+    mainTrack,
+    variations: variations.slice(0, 6),
+    relatedTracks: relatedTracks.slice(0, 10),
+    similarTracks: similarTracks.slice(0, 10),
+    tracks: allTracks.slice(0, 20),
     albums: albums.slice(0, 4),
     artists: artists.slice(0, 4)
   };
+}
+
+async function getRelatedTracks(artistName) {
+  const yt = await getInnertube();
+  try {
+    const results = await yt.music.search(artistName);
+    const tracks = [];
+    const seen = new Set();
+    for (const section of results.contents) {
+      if (!section.contents) continue;
+      for (const item of section.contents) {
+        if (!item || !item.id || item.type !== 'MusicResponsiveListItem') continue;
+        const itemType = item.item_type || '';
+        if (itemType !== 'song' && itemType !== 'video') continue;
+        const dur = parseDuration(item.duration);
+        if (!dur || dur > 420 || seen.has(item.id)) continue;
+        const artist = getArtist(item);
+        if (artist.toLowerCase() !== artistName.toLowerCase()) continue;
+        seen.add(item.id);
+        tracks.push({
+          id: item.id,
+          title: (item.title || 'Unknown').toString(),
+          artist,
+          thumbnail: thumbUrl(item),
+          duration: dur,
+          url: `https://youtube.com/watch?v=${item.id}`,
+          type: 'track'
+        });
+      }
+    }
+    return tracks.slice(0, 20);
+  } catch { return []; }
 }
 
 async function getVideoInfo(videoId) {
@@ -223,4 +317,4 @@ async function getArtistInfo(artistId) {
   } catch { return null; }
 }
 
-module.exports = { search, getVideoInfo, getLyrics, getInnertube, getArtistInfo };
+module.exports = { search, getVideoInfo, getLyrics, getInnertube, getArtistInfo, getRelatedTracks };

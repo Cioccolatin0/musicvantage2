@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics, getArtistInfo } = require('./ytmusic');
+const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics, getArtistInfo, getRelatedTracks } = require('./ytmusic');
 const ytdlp = require('./ytdlp');
 const auth = require('./auth');
 const social = require('./social');
@@ -182,6 +182,14 @@ app.get('/api/artist/:id', async (req, res) => {
     const info = await getArtistInfo(req.params.id);
     if (!info) return res.status(404).json({ error: 'Artist not found' });
     res.json(info);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/related/:artistName', async (req, res) => {
+  try {
+    req.setTimeout(15000);
+    const tracks = await getRelatedTracks(decodeURIComponent(req.params.artistName));
+    res.json(tracks);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

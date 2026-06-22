@@ -49,6 +49,12 @@ export async function getArtistInfo(artistId) {
   return res.json();
 }
 
+export async function getRelatedTracks(artistName) {
+  const res = await authFetch(`${API}/related/${encodeURIComponent(artistName)}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
 // --- Social Auth ---
 export async function socialRegister(username, email, password, referralCode) {
   const res = await authFetch(`${API}/social/register`, {

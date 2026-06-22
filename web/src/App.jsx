@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { search, getLyrics, getArtistInfo, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket } from './api';
+import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket } from './api';
 import { formatDuration } from './utils';
 import Sidebar from './Sidebar';
 import PlayerBar from './PlayerBar';
@@ -57,6 +57,7 @@ function App() {
   const repeatRef = useRef('off');
   const playNextRef = useRef(() => {});
   const userRef = useRef(null);
+  const searchTimerRef = useRef(null);
 
   useEffect(() => { userRef.current = user; }, [user]);
 
@@ -99,7 +100,14 @@ function App() {
     finally { setLoading(false); }
   }, []);
 
-  const handleSubmit = (e) => { e.preventDefault(); doSearch(query, filter); };
+  const handleSubmit = (e) => { e.preventDefault(); if (searchTimerRef.current) clearTimeout(searchTimerRef.current); doSearch(query, filter); };
+  const handleQueryChange = (val) => {
+    setQuery(val);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (val.trim().length > 1) {
+      searchTimerRef.current = setTimeout(() => doSearch(val, filter), 400);
+    }
+  };
 
   const getShuffledIndex = useCallback((currentIdx, arrLength) => {
     if (arrLength <= 1) return -1;
@@ -302,6 +310,10 @@ function App() {
   const tracks = results?.tracks || [];
   const albums = results?.albums || [];
   const artists = results?.artists || [];
+  const mainTrack = results?.mainTrack || null;
+  const variations = results?.variations || [];
+  const relatedTracks = results?.relatedTracks || [];
+  const similarTracks = results?.similarTracks || [];
 
   return (
     <>
@@ -358,7 +370,7 @@ function App() {
           <form className="search-form" onSubmit={handleSubmit}>
             <div className="search-wrap">
               <IconSearch size={16} />
-              <input type="text" placeholder="Search songs, albums, artists..." value={query} onChange={e => setQuery(e.target.value)} />
+              <input type="text" placeholder="Search songs, albums, artists..." value={query} onChange={e => handleQueryChange(e.target.value)} />
             </div>
             <button type="submit">Search</button>
           </form>
@@ -530,7 +542,8 @@ function App() {
                       ))}
                     </div>
                   </div>
-                  {(filter === 'all' || filter === 'artist') && artists.length > 0 && (
+
+                  {artists.length > 0 && (
                     <section className="section">
                       <h3>Artists</h3>
                       <div className="scroll-row">
@@ -543,42 +556,80 @@ function App() {
                       </div>
                     </section>
                   )}
-                  {(filter === 'all' || filter === 'album') && albums.length > 0 && (
+
+                  {mainTrack && (
                     <section className="section">
-                      <h3>Albums</h3>
-                      <div className="scroll-row">
-                        {albums.map(a => (
-                          <div key={a.id} className="card card-album" onClick={() => { setQuery(a.title); doSearch(a.title, 'track'); }}>
-                            <img className="card-img" src={a.thumbnail} alt={a.title} loading="lazy" />
-                            <div className="card-body"><h4>{a.title}</h4><p>{a.artist}</p></div>
-                          </div>
-                        ))}
+                      <h3>Top result</h3>
+                      <div className="main-result" onClick={() => playTrack(mainTrack, results?.tracks || [mainTrack])}>
+                        <img className="main-result-img" src={mainTrack.thumbnail} alt={mainTrack.title} />
+                        <div className="main-result-info">
+                          <h3>{mainTrack.title}</h3>
+                          <p>{mainTrack.artist}</p>
+                          <span className="track-duration">{formatDuration(mainTrack.duration)}</span>
+                        </div>
+                        <button className="icon-btn track-more" onClick={e => { e.stopPropagation(); setCurrentTrack(mainTrack); setShowPlaylists(true); }}>+</button>
                       </div>
                     </section>
                   )}
-                  {(filter === 'all' || filter === 'track') && tracks.length > 0 && (
+
+                  {variations.length > 0 && (
                     <section className="section">
-                      {filter === 'all' && <h3>Songs</h3>}
+                      <h3>Variations</h3>
                       <div className="track-list">
-                        {tracks.map((t, i) => {
+                        {variations.map((t, i) => {
                           const isActive = currentTrack?.id === t.id;
-                          const isLoading = loadingTrack === t.id;
                           return (
-                            <div key={t.id} className={`track-item ${isActive ? 'active' : ''} ${isLoading ? 'loading' : ''}`} onClick={() => playTrack(t, tracks)}>
-                              <span className="track-num">{isLoading ? <div className="spinner sm" /> : isActive && playing ? <IconMusicNote size={14} /> : i + 1}</span>
+                            <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, results?.tracks || [])}>
                               <img src={t.thumbnail} alt={t.title} loading="lazy" />
                               <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
                               <span className="track-duration">{formatDuration(t.duration)}</span>
-                              <button className="icon-btn track-more" onClick={e => { e.stopPropagation(); setCurrentTrack(t); setShowPlaylists(true); }} title="Add to playlist">
-                                <svg style={{ width: 16, height: 16, fill: 'currentColor' }} viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>
-                              </button>
+                              <button className="icon-btn track-more" onClick={e => { e.stopPropagation(); setCurrentTrack(t); setShowPlaylists(true); }}>+</button>
                             </div>
                           );
                         })}
                       </div>
                     </section>
                   )}
-                  {filter === 'album' && albums.length > 0 && (
+
+                  {relatedTracks.length > 0 && (
+                    <section className="section">
+                      <h3>More by {mainTrack?.artist || 'this artist'}</h3>
+                      <div className="track-list">
+                        {relatedTracks.map((t, i) => {
+                          const isActive = currentTrack?.id === t.id;
+                          return (
+                            <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, results?.tracks || [])}>
+                              <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                              <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                              <span className="track-duration">{formatDuration(t.duration)}</span>
+                              <button className="icon-btn track-more" onClick={e => { e.stopPropagation(); setCurrentTrack(t); setShowPlaylists(true); }}>+</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+
+                  {similarTracks.length > 0 && (
+                    <section className="section">
+                      <h3>Similar tracks</h3>
+                      <div className="track-list">
+                        {similarTracks.map((t, i) => {
+                          const isActive = currentTrack?.id === t.id;
+                          return (
+                            <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, results?.tracks || [])}>
+                              <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                              <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                              <span className="track-duration">{formatDuration(t.duration)}</span>
+                              <button className="icon-btn track-more" onClick={e => { e.stopPropagation(); setCurrentTrack(t); setShowPlaylists(true); }}>+</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+
+                  {albums.length > 0 && (
                     <section className="section">
                       <h3>Albums</h3>
                       <div className="scroll-row">
@@ -586,19 +637,6 @@ function App() {
                           <div key={a.id} className="card card-album" onClick={() => { setQuery(a.title); doSearch(a.title, 'track'); }}>
                             <img className="card-img" src={a.thumbnail} alt={a.title} loading="lazy" />
                             <div className="card-body"><h4>{a.title}</h4><p>{a.artist}</p></div>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                  {filter === 'artist' && artists.length > 0 && (
-                    <section className="section">
-                      <h3>Artists</h3>
-                      <div className="scroll-row">
-                        {artists.map(a => (
-                          <div key={a.id} className="card card-artist" onClick={() => handleArtistClick(a)}>
-                            <img className="card-img" src={a.thumbnail} alt={a.title} loading="lazy" />
-                            <div className="card-body"><h4>{a.title}</h4><p>Artist</p></div>
                           </div>
                         ))}
                       </div>

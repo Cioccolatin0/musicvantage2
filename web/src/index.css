@@ -454,3 +454,15 @@ body {
 .artist-header { text-align: center; margin-bottom: 32px; }
 .artist-header-img { width: 200px; height: 200px; border-radius: 50%; object-fit: cover; margin-bottom: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
 .artist-desc { max-width: 600px; margin: 8px auto; font-size: 13px; line-height: 1.5; }
+
+/* === Main Result === */
+.main-result {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--surface); border-radius: var(--radius); padding: 12px;
+  cursor: pointer; transition: background 0.2s;
+}
+.main-result:hover { background: var(--surface-hover); }
+.main-result-img { width: 80px; height: 80px; border-radius: var(--radius-sm); object-fit: cover; }
+.main-result-info { flex: 1; }
+.main-result-info h3 { font-size: 18px; margin-bottom: 4px; }
+.main-result-info p { color: var(--text-secondary); font-size: 13px; }
