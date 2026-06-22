@@ -3,15 +3,44 @@ const db = require('./db');
 
 function hashPassword(pw) { return crypto.createHash('sha256').update(pw).digest('hex'); }
 
-async function register(username, password) {
+async function register(username, password, referralCode) {
   const existing = await db.query('SELECT id FROM social_users WHERE username = $1', [username]);
   if (existing.rows.length > 0) return null;
+  if (referralCode) {
+    const codeRow = await db.query('SELECT id, creator_id FROM referral_codes WHERE code = $1 AND used_by IS NULL', [referralCode]);
+    if (codeRow.rows.length === 0) return { error: 'Invalid or used referral code' };
+  } else {
+    const existingUsers = await db.query('SELECT COUNT(*) FROM social_users');
+    if (parseInt(existingUsers.rows[0].count) > 0) return { error: 'Referral code required' };
+  }
   const color = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
   const { rows } = await db.query(
     'INSERT INTO social_users (username, password, color, created) VALUES ($1, $2, $3, $4) RETURNING id, username, color',
     [username, hashPassword(password), color, Date.now()]
   );
+  if (referralCode && rows[0]) {
+    await db.query('UPDATE referral_codes SET used_by = $1 WHERE code = $2', [rows[0].id, referralCode]);
+  }
   return rows[0];
+}
+
+async function generateReferralCode(userId) {
+  const count = await db.query('SELECT COUNT(*) FROM referral_codes WHERE creator_id = $1', [userId]);
+  if (parseInt(count.rows[0].count) >= 10) return { error: 'Maximum 10 codes reached. Contact an admin.' };
+  const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+  const { rows } = await db.query(
+    'INSERT INTO referral_codes (creator_id, code, created) VALUES ($1, $2, $3) RETURNING code',
+    [userId, code, Date.now()]
+  );
+  return { code: rows[0].code };
+}
+
+async function getMyReferralCodes(userId) {
+  const { rows } = await db.query(
+    'SELECT code, used_by, created FROM referral_codes WHERE creator_id = $1 ORDER BY created DESC',
+    [userId]
+  );
+  return rows;
 }
 
 async function login(username, password) {
@@ -191,11 +220,27 @@ async function addToSharedPlaylist(playlistId, track) {
   return tracks;
 }
 
+async function getAllUsers() {
+  const { rows } = await db.query('SELECT id, username, color, is_admin, created FROM social_users ORDER BY created DESC');
+  return rows;
+}
+
+async function removeReferralLimit(userId) {
+  const { rows } = await db.query('DELETE FROM referral_codes WHERE creator_id = $1 AND used_by IS NULL RETURNING code', [userId]);
+  return rows.length;
+}
+
+async function setAdmin(userId, isAdmin) {
+  await db.query('UPDATE social_users SET is_admin = $1 WHERE id = $2', [isAdmin, userId]);
+}
+
 module.exports = {
   register, login, getUser, searchUsers,
   sendFriendRequest, respondToFriend, getFriends, getPendingRequests,
   getNotifications, markNotificationRead,
   saveChatMessage, getChatHistory,
   createJam, joinJam, leaveJam, getJamParticipants, getActiveJams, updateJamState,
-  createSharedPlaylist, getSharedPlaylists, sharePlaylist, addToSharedPlaylist
+  createSharedPlaylist, getSharedPlaylists, sharePlaylist, addToSharedPlaylist,
+  generateReferralCode, getMyReferralCodes,
+  getAllUsers, removeReferralLimit, setAdmin
 };

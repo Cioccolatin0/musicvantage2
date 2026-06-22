@@ -103,6 +103,16 @@ CREATE TABLE IF NOT EXISTS notifications (
   read    BOOLEAN NOT NULL DEFAULT FALSE,
   created BIGINT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS referral_codes (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id UUID NOT NULL REFERENCES social_users(id) ON DELETE CASCADE,
+  code       TEXT UNIQUE NOT NULL,
+  used_by    UUID REFERENCES social_users(id),
+  created    BIGINT NOT NULL
+);
+
+ALTER TABLE social_users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
 `;
 
 async function initDb() {

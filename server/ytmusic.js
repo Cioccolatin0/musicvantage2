@@ -145,4 +145,57 @@ async function getLyrics(videoId) {
   return null;
 }
 
-module.exports = { search, getVideoInfo, getLyrics, getInnertube };
+async function getArtistInfo(artistId) {
+  const yt = await getInnertube();
+  try {
+    const artist = await yt.music.getArtist(artistId);
+    if (!artist) return null;
+
+    const result = {
+      id: artistId,
+      name: artist.name || artist.title || 'Unknown',
+      thumbnail: '',
+      description: artist.description || '',
+      subscribers: artist.subscribers || '',
+      songs: [],
+      albums: [],
+      singles: []
+    };
+
+    if (artist.thumbnails && artist.thumbnails.length > 0) {
+      const t = artist.thumbnails[artist.thumbnails.length - 1];
+      result.thumbnail = t.url || t.contentUrl || '';
+    }
+
+    if (artist.songs && artist.songs.contents) {
+      for (const item of artist.songs.contents) {
+        if (!item || !item.id) continue;
+        result.songs.push({
+          id: item.id,
+          title: item.title || 'Unknown',
+          artist: item.artists?.[0]?.name || result.name,
+          thumbnail: thumbUrl(item),
+          duration: parseDuration(item.duration),
+          url: `https://youtube.com/watch?v=${item.id}`,
+          type: 'track'
+        });
+      }
+    }
+    if (artist.albums && artist.albums.contents) {
+      for (const item of artist.albums.contents) {
+        if (!item || !item.id) continue;
+        result.albums.push({
+          id: item.id,
+          title: item.title || 'Unknown',
+          thumbnail: thumbUrl(item),
+          year: item.year || 0,
+          type: 'album'
+        });
+      }
+    }
+
+    return result;
+  } catch { return null; }
+}
+
+module.exports = { search, getVideoInfo, getLyrics, getInnertube, getArtistInfo };

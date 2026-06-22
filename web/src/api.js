@@ -43,11 +43,17 @@ export async function getLyrics(id) {
   return data.lyrics;
 }
 
+export async function getArtistInfo(artistId) {
+  const res = await authFetch(`${API}/artist/${artistId}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 // --- Social Auth ---
-export async function socialRegister(username, password) {
+export async function socialRegister(username, password, referralCode) {
   const res = await authFetch(`${API}/social/register`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ username, password, referralCode })
   });
   return res.json();
 }
@@ -176,6 +182,45 @@ export async function adminRevokeApp(id) {
   const res = await fetch(`${API}/admin/apps/revoke`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token: adminToken, appId: id })
+  });
+  return res.json();
+}
+
+// --- Referral Codes ---
+export async function generateReferralCode(userId) {
+  const res = await authFetch(`${API}/social/referral/generate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId })
+  });
+  return res.json();
+}
+export async function getMyReferralCodes(userId) {
+  const res = await authFetch(`${API}/social/referral/codes?userId=${userId}`);
+  return res.json();
+}
+
+// --- Admin Social ---
+export async function adminSocialLogin(email, password) {
+  const res = await authFetch(`${API}/admin/social/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  return res.json();
+}
+export async function adminGetUsers() {
+  const res = await authFetch(`${API}/admin/users`);
+  return res.json();
+}
+export async function adminRemoveUserCodes(userId) {
+  const res = await authFetch(`${API}/admin/users/${userId}/remove-codes`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }
+  });
+  return res.json();
+}
+export async function adminSetUserAdmin(userId, isAdmin) {
+  const res = await authFetch(`${API}/admin/users/${userId}/set-admin`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ isAdmin })
   });
   return res.json();
 }

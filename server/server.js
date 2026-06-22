@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics } = require('./ytmusic');
+const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics, getArtistInfo } = require('./ytmusic');
 const ytdlp = require('./ytdlp');
 const auth = require('./auth');
 const social = require('./social');
@@ -28,11 +28,12 @@ app.use('/api', auth.apiKeyMiddleware);
 // --- Social Auth ---
 app.post('/api/social/register', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username, password, referralCode } = req.body;
     if (!username || !password || username.length < 2 || password.length < 3)
       return res.status(400).json({ error: 'Invalid username or password' });
-    const user = await social.register(username, password);
+    const user = await social.register(username, password, referralCode);
     if (!user) return res.status(409).json({ error: 'Username taken' });
+    if (user.error) return res.status(400).json({ error: user.error });
     res.json(user);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -174,6 +175,15 @@ app.get('/api/search', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/artist/:id', async (req, res) => {
+  try {
+    req.setTimeout(15000);
+    const info = await getArtistInfo(req.params.id);
+    if (!info) return res.status(404).json({ error: 'Artist not found' });
+    res.json(info);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/debug/search', async (req, res) => {
   try {
     const q = req.query.q || 'test';
@@ -295,6 +305,68 @@ app.post('/api/admin/change-password', async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Referral Code Routes ---
+app.post('/api/social/referral/generate', async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+    const result = await social.generateReferralCode(userId);
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/social/referral/codes', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    if (!userId) return res.json([]);
+    res.json(await social.getMyReferralCodes(userId));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- Admin User Management ---
+app.post('/api/admin/social/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (email === 'edoardobevilacqua78@gmail.com' && password === 'Eddyno99') {
+      let user = await social.login('admin', 'Eddyno99');
+      if (!user) {
+        const u = await social.register('admin', 'Eddyno99');
+        if (u && !u.error && u.id) await social.setAdmin(u.id, true);
+        user = u && !u.error ? { ...u, isAdmin: true } : { username: 'admin', isAdmin: true };
+      } else {
+        if (!user.is_admin) await social.setAdmin(user.id, true);
+        user = { ...user, isAdmin: true };
+      }
+      return res.json(user);
+    }
+    const u2 = await social.login(email, password);
+    if (!u2) return res.status(401).json({ error: 'Invalid credentials' });
+    res.json(u2);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    res.json(await social.getAllUsers());
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/users/:id/remove-codes', async (req, res) => {
+  try {
+    const removed = await social.removeReferralLimit(req.params.id);
+    res.json({ removed });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/users/:id/set-admin', async (req, res) => {
+  try {
+    const { isAdmin } = req.body;
+    await social.setAdmin(req.params.id, isAdmin);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Static files
 app.use(express.static(path.join(__dirname, '..', 'web', 'dist')));
 app.get('*', (req, res) => {
@@ -364,7 +436,17 @@ io.on('connection', (socket) => {
 
 // --- Start ---
 const db = require('./db');
-db.initDb().then(() => auth.ensureInitialSetup()).then(() => {
+db.initDb().then(async () => {
+  await auth.ensureInitialSetup();
+  try {
+    let admin = await social.login('admin', 'Eddyno99');
+    if (!admin) {
+      admin = await social.register('admin', 'Eddyno99');
+      if (admin && !admin.error && admin.id) await social.setAdmin(admin.id, true);
+    } else if (!admin.is_admin) {
+      await social.setAdmin(admin.id, true);
+    }
+  } catch (e) { console.error('Admin user init:', e.message); }
   server.listen(PORT, () => {
     console.log(`Soundusic server running on http://localhost:${PORT}`);
   });

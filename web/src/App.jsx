@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { search, getLyrics, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket } from './api';
+import { search, getLyrics, getArtistInfo, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket } from './api';
 import { formatDuration } from './utils';
 import Sidebar from './Sidebar';
 import PlayerBar from './PlayerBar';
@@ -14,7 +14,7 @@ import Friends from './components/Friends';
 import Notifications from './components/Notifications';
 import JamSession from './components/JamSession';
 import MobileNav from './components/MobileNav';
-import { IconSearch, IconAdmin, IconImport, IconHome, IconChat, IconFriends, IconJam, IconPlaylist, IconQueue, IconLyrics, IconBell, IconUser } from './Icons';
+import { IconSearch, IconAdmin, IconImport, IconHome, IconChat, IconFriends, IconJam, IconPlaylist, IconQueue, IconLyrics, IconBell, IconUser, IconMusicNote } from './Icons';
 
 function App() {
   const [query, setQuery] = useState('');
@@ -49,6 +49,8 @@ function App() {
   const [showChat, setShowChat] = useState(false);
   const [notifs, setNotifs] = useState([]);
   const [showNotifs, setShowNotifs] = useState(false);
+  const [artistInfo, setArtistInfo] = useState(null);
+  const [artistLoading, setArtistLoading] = useState(false);
 
   const ytPlayerRef = useRef(null);
   const progressRef = useRef(null);
@@ -58,6 +60,35 @@ function App() {
   const userRef = useRef(null);
 
   useEffect(() => { userRef.current = user; }, [user]);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('sv_state');
+      if (saved) {
+        const s = JSON.parse(saved);
+        if (s.currentTrack) setCurrentTrack(s.currentTrack);
+        if (s.queue) setQueue(s.queue);
+        if (s.shuffle) setShuffle(s.shuffle);
+        if (s.repeat) setRepeat(s.repeat);
+        if (s.volume) setVolume(s.volume);
+      }
+      const savedUser = localStorage.getItem('sv_user');
+      if (savedUser) setUser(JSON.parse(savedUser));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sv_state', JSON.stringify({ currentTrack, queue, shuffle, repeat, volume }));
+    } catch {}
+  }, [currentTrack, queue, shuffle, repeat, volume]);
+
+  useEffect(() => {
+    try {
+      if (user) localStorage.setItem('sv_user', JSON.stringify(user));
+      else localStorage.removeItem('sv_user');
+    } catch {}
+  }, [user]);
 
   const doSearch = useCallback(async (q, f) => {
     if (!q.trim()) return;
@@ -117,30 +148,31 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!youtubeReady || !currentTrack) return;
-    setLoadingStream(true); setStreamError(false);
+    if (!youtubeReady || ytPlayerRef.current) return;
+    try {
+      ytPlayerRef.current = new YT.Player('yt-player', {
+        height: '1', width: '1',
+        playerVars: { modestbranding: 1, rel: 0, controls: 0, playsinline: 1, fs: 0, disablekb: 1 },
+        events: {
+          onReady: () => {},
+          onStateChange: (e) => {
+            if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
+            else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
+            else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
+            else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
+          },
+          onError: () => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+        }
+      });
+    } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+  }, [youtubeReady]);
+
+  useEffect(() => {
     const p = ytPlayerRef.current;
-    if (!p) {
-      try {
-        ytPlayerRef.current = new YT.Player('yt-player', {
-          videoId: currentTrack.id, height: '240', width: '100%',
-          playerVars: { autoplay: 1, modestbranding: 1, rel: 0, controls: 0, playsinline: 1, fs: 0 },
-          events: {
-            onReady: (e) => { e.target.playVideo(); },
-            onStateChange: (e) => {
-              if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
-              else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
-              else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
-              else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
-            },
-            onError: () => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-          }
-        });
-      } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-    } else {
-      try { p.loadVideoById(currentTrack.id); } catch { setLoadingStream(false); setStreamError(true); }
-    }
-  }, [currentTrack?.id, youtubeReady]);
+    if (!p || !currentTrack) return;
+    setLoadingStream(true); setStreamError(false);
+    try { p.loadVideoById(currentTrack.id); } catch { setLoadingStream(false); setStreamError(true); }
+  }, [currentTrack?.id]);
 
   useEffect(() => {
     if (!playing) return;
@@ -198,6 +230,14 @@ function App() {
   const toggleRepeat = () => setRepeat(r => r === 'off' ? 'all' : r === 'all' ? 'one' : 'off');
   const removeFromQueue = (idx) => setQueue(q => q.filter((_, i) => i !== idx));
   const handleNavigate = (view) => { setActiveView(view); setSidebarCollapsed(true); };
+  const handleArtistClick = async (artist) => {
+    setArtistLoading(true); setArtistInfo(null); setActiveView('home');
+    try {
+      const info = await getArtistInfo(artist.id);
+      setArtistInfo(info || artist);
+    } catch { setArtistInfo(artist); }
+    setArtistLoading(false);
+  };
   const createPlaylist = (name) => setPlaylists(pl => [...pl, { name, tracks: [] }]);
   const addToPlaylist = (playlistIdx) => {
     if (!currentTrack) return;
@@ -206,15 +246,15 @@ function App() {
   };
 
   // Social auth
-  const handleRegister = async (username, password) => {
-    const u = await socialRegister(username, password);
+  const handleRegister = async (username, password, referralCode) => {
+    const u = await socialRegister(username, password, referralCode || undefined);
     if (u && u.id) { setUser(u); setShowAuth(false); return true; }
-    return false;
+    return u?.error || 'Registration failed';
   };
   const handleLogin = async (username, password) => {
     const u = await socialLogin(username, password);
     if (u && u.id) { setUser(u); setShowAuth(false); return true; }
-    return false;
+    return u?.error || 'Invalid credentials';
   };
   const handleLogout = () => setUser(null);
 
@@ -407,8 +447,52 @@ function App() {
             </div>
           )}
 
+          {artistInfo && !artistLoading && (
+            <div className="panel-content artist-page">
+              <div className="artist-header">
+                <button className="btn-secondary" style={{ marginBottom: 12 }} onClick={() => setArtistInfo(null)}>← Back to results</button>
+                {artistInfo.thumbnail && <img className="artist-header-img" src={artistInfo.thumbnail} alt={artistInfo.name} />}
+                <h2>{artistInfo.name}</h2>
+                {artistInfo.subscribers && <p className="text-secondary">{artistInfo.subscribers} subscribers</p>}
+                {artistInfo.description && <p className="text-secondary artist-desc">{artistInfo.description}</p>}
+              </div>
+              {artistInfo.songs && artistInfo.songs.length > 0 && (
+                <section className="section">
+                  <h3>Songs</h3>
+                  <div className="track-list">
+                    {artistInfo.songs.map((t, i) => {
+                      const isActive = currentTrack?.id === t.id;
+                      return (
+                        <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, artistInfo.songs)}>
+                          <span className="track-num">{isActive && playing ? <IconMusicNote size={14} /> : i + 1}</span>
+                          <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                          <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                          <span className="track-duration">{formatDuration(t.duration)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+              {artistInfo.albums && artistInfo.albums.length > 0 && (
+                <section className="section">
+                  <h3>Albums</h3>
+                  <div className="scroll-row">
+                    {artistInfo.albums.map(a => (
+                      <div key={a.id} className="card card-album" onClick={() => { setQuery(a.title); doSearch(a.title, 'album'); }}>
+                        {a.thumbnail && <img className="card-img" src={a.thumbnail} alt={a.title} loading="lazy" />}
+                        <div className="card-body"><h4>{a.title}</h4>{a.year ? <p>{a.year}</p> : null}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+          {artistLoading && <p style={{ padding: 24 }}>Loading artist...</p>}
+
           {activeView === 'admin' && !adminLoggedIn && <AdminLogin onLogin={() => setAdminLoggedIn(true)} />}
-          {activeView === 'admin' && adminLoggedIn && <AdminDashboard onLogout={() => setAdminLoggedIn(false)} />}
+          {activeView === 'admin' && adminLoggedIn && <AdminDashboard onLogout={() => setAdminLoggedIn(false)} user={user} />}
           {activeView === 'import' && <ImportPlaylist onPlayTrack={playTrack} />}
 
           {activeView === 'home' && (
@@ -449,7 +533,7 @@ function App() {
                       <h3>Artists</h3>
                       <div className="scroll-row">
                         {artists.map(a => (
-                          <div key={a.id} className="card card-artist" onClick={() => { setQuery(a.title); doSearch(a.title, 'all'); }}>
+                          <div key={a.id} className="card card-artist" onClick={() => handleArtistClick(a)}>
                             <img className="card-img" src={a.thumbnail} alt={a.title} loading="lazy" />
                             <div className="card-body"><h4>{a.title}</h4><p>Artist</p></div>
                           </div>
@@ -510,7 +594,7 @@ function App() {
                       <h3>Artists</h3>
                       <div className="scroll-row">
                         {artists.map(a => (
-                          <div key={a.id} className="card card-artist" onClick={() => { setQuery(a.title); doSearch(a.title, 'all'); }}>
+                          <div key={a.id} className="card card-artist" onClick={() => handleArtistClick(a)}>
                             <img className="card-img" src={a.thumbnail} alt={a.title} loading="lazy" />
                             <div className="card-body"><h4>{a.title}</h4><p>Artist</p></div>
                           </div>
@@ -524,6 +608,10 @@ function App() {
           )}
         </main>
       </div>
+
+      <footer className="app-footer">
+        <p>MusicVantage 2026 &mdash; <a href="mailto:edoardobevilacqua78@gmail.com">edoardobevilacqua78@gmail.com</a></p>
+      </footer>
 
       <MobileNav activeView={activeView} onNavigate={handleNavigate} onOpenSearch={() => {}} notifCount={notifs.length} />
 
@@ -592,14 +680,17 @@ function AuthModal({ onLogin, onRegister, onClose, onLogout, user }) {
   const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [referralCode, setReferralCode] = useState('');
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
     if (!username.trim() || !password.trim()) { setError('Fill all fields'); return; }
+    if (mode === 'register' && !referralCode.trim()) { setError('Referral code required'); return; }
     const fn = mode === 'login' ? onLogin : onRegister;
-    const ok = await fn(username.trim(), password);
-    if (!ok) setError(mode === 'login' ? 'Invalid credentials' : 'Username taken');
+    const ok = await fn(username.trim(), password, referralCode.trim());
+    if (ok === true) return;
+    setError(typeof ok === 'string' ? ok : (mode === 'login' ? 'Invalid credentials' : 'Registration failed'));
   };
 
   return (
@@ -621,9 +712,10 @@ function AuthModal({ onLogin, onRegister, onClose, onLogout, user }) {
           <form className="auth-form" onSubmit={handleSubmit}>
             <input value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" />
             <input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="Password" />
+            {mode === 'register' && <input value={referralCode} onChange={e => setReferralCode(e.target.value)} placeholder="Referral code" />}
             {error && <p className="auth-error">{error}</p>}
             <button type="submit" className="btn-primary">{mode === 'login' ? 'Sign In' : 'Register'}</button>
-            <button type="button" className="btn-secondary" onClick={() => setMode(m => m === 'login' ? 'register' : 'login')}>
+            <button type="button" className="btn-secondary" onClick={() => { setMode(m => m === 'login' ? 'register' : 'login'); setError(''); }}>
               {mode === 'login' ? 'Create account' : 'Already have an account'}
             </button>
           </form>
