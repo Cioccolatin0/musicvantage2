@@ -1,12 +1,12 @@
 import React from 'react';
-import { IconHome, IconChat, IconFriends, IconJam, IconPlaylist } from '../Icons';
+import { IconHome, IconFriends, IconJam, IconPlaylist, IconDownload } from '../Icons';
 
-const iconMap = { home: IconHome, social: IconChat, friends: IconFriends, jam: IconJam, playlists: IconPlaylist };
+const iconMap = { home: IconHome, downloads: IconDownload, friends: IconFriends, jam: IconJam, playlists: IconPlaylist };
 
 export default function MobileNav({ activeView, onNavigate, onOpenSearch, notifCount }) {
   const tabs = [
     { id: 'home', label: 'Home' },
-    { id: 'social', label: 'Social' },
+    { id: 'downloads', label: 'Downloads' },
     { id: 'friends', label: 'Friends' },
     { id: 'jam', label: 'Jam' },
     { id: 'playlists', label: 'Playlists' },
@@ -20,7 +20,6 @@ export default function MobileNav({ activeView, onNavigate, onOpenSearch, notifC
           <button key={t.id} className={`mobile-nav-btn ${activeView === t.id ? 'active' : ''}`} onClick={() => onNavigate(t.id)}>
             <span className="mobile-nav-icon">{Icon && <Icon size={20} />}</span>
             <span className="mobile-nav-label">{t.label}</span>
-            {t.id === 'social' && notifCount > 0 && <span className="mobile-badge">{notifCount}</span>}
           </button>
         );
       })}

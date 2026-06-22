@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket, getStreamUrl } from './api';
+import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket, getStreamUrl, downloadAudioBlob } from './api';
 import { formatDuration } from './utils';
-import { getCachedSearch, setCachedSearch, getRecentTracks, addRecentTrack, getDownloads, addDownload, removeDownload, isDownloaded } from './cache';
+import { getCachedSearch, setCachedSearch, getRecentTracks, addRecentTrack, getDownloads, addDownload, removeDownload, isDownloaded, saveAudioBlob, getAudioUrl } from './cache';
 
 function getFavorites() { try { return JSON.parse(localStorage.getItem('sv_favorites') || '[]'); } catch { return []; } }
 function saveFavorites(favs) { try { localStorage.setItem('sv_favorites', JSON.stringify(favs)); } catch {} }
@@ -17,7 +17,7 @@ import Friends from './components/Friends';
 import Notifications from './components/Notifications';
 import JamSession from './components/JamSession';
 import MobileNav from './components/MobileNav';
-import { IconSearch, IconAdmin, IconImport, IconHome, IconChat, IconFriends, IconJam, IconPlaylist, IconQueue, IconBell, IconUser, IconMusicNote } from './Icons';
+import { IconSearch, IconAdmin, IconImport, IconHome, IconChat, IconFriends, IconJam, IconPlaylist, IconQueue, IconBell, IconUser, IconMusicNote, IconDownload } from './Icons';
 
 function App() {
   const [query, setQuery] = useState('');
@@ -57,6 +57,7 @@ function App() {
   const [artistLoading, setArtistLoading] = useState(false);
   const [recentTracks, setRecentTracks] = useState(() => getRecentTracks());
   const [downloads, setDownloads] = useState(() => getDownloads());
+  const [downloadingIds, setDownloadingIds] = useState(new Set());
   const [favorites, setFavorites] = useState(() => getFavorites());
   const [recommended, setRecommended] = useState([]);
 
@@ -275,7 +276,7 @@ function App() {
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  // Background playback: switch from YouTube IFrame to <audio> when page is hidden
+  // Background playback: establish audio session on user gesture, switch when hidden
   useEffect(() => {
     const currentRef = currentTrack;
     if (!currentRef) return;
@@ -283,27 +284,71 @@ function App() {
     const bgAudio = new Audio();
     bgAudio.preload = 'auto';
     bgAudioRef.current = bgAudio;
+    let bgReady = false;
+    let silentPlayed = false;
+
+    // On iOS, we need to start playing audio during a user gesture
+    // to establish the audio session for background playback
+    const startSilentAudio = () => {
+      if (silentPlayed) return;
+      try {
+        bgAudio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+        bgAudio.muted = true;
+        bgAudio.play().then(() => {
+          silentPlayed = true;
+          bgAudio.muted = false;
+        }).catch(() => {});
+      } catch {}
+    };
+
+    // Pre-fetch stream URL
+    const prepareBgAudio = async () => {
+      if (bgReady || !currentRef) return;
+      try {
+        const url = await getStreamUrl(currentRef.id);
+        if (url && bgAudioRef.current) {
+          bgAudio.src = url;
+          bgReady = true;
+        }
+      } catch {}
+    };
+
+    if (playing) {
+      startSilentAudio();
+      prepareBgAudio();
+    }
 
     const onVisibility = async () => {
-      if (document.hidden && playing) {
+      if (document.hidden && currentRef) {
         const p = ytPlayerRef.current;
         const pos = p?.getCurrentTime?.() || 0;
         try { p?.pauseVideo?.(); } catch {}
-        try {
-          const url = await getStreamUrl(currentRef.id);
-          if (url && document.hidden) {
-            bgAudio.src = url;
-            bgAudio.currentTime = pos;
-            bgAudio.volume = volume;
-            bgAudio.play().catch(() => {});
+        if (bgReady && bgAudio.src && !bgAudio.src.startsWith('data:')) {
+          bgAudio.currentTime = pos;
+          bgAudio.volume = volume;
+          bgAudio.muted = false;
+          bgAudio.play().then(() => {
             bgModeRef.current = true;
-          }
-        } catch {}
+          }).catch(() => {});
+        } else if (playing) {
+          try {
+            const url = await getStreamUrl(currentRef.id);
+            if (url && document.hidden) {
+              bgAudio.src = url;
+              bgAudio.currentTime = pos;
+              bgAudio.volume = volume;
+              bgAudio.muted = false;
+              bgAudio.play().then(() => {
+                bgModeRef.current = true;
+              }).catch(() => {});
+            }
+          } catch {}
+        }
       } else if (!document.hidden && bgModeRef.current) {
         const pos = bgAudio.currentTime || 0;
         bgAudio.pause();
-        bgAudio.src = '';
         bgModeRef.current = false;
+        bgReady = false;
         const p = ytPlayerRef.current;
         if (p) {
           try { p.seekTo(pos, true); p.playVideo(); } catch {}
@@ -316,6 +361,8 @@ function App() {
       document.removeEventListener('visibilitychange', onVisibility);
       bgAudio.pause();
       bgAudio.src = '';
+      bgReady = false;
+      silentPlayed = false;
     };
   }, [currentTrack?.id, playing, volume]);
 
@@ -351,9 +398,22 @@ function App() {
     setPlaylists(pl => pl.map((p, i) => i === playlistIdx ? { ...p, tracks: [...p.tracks, currentTrack] } : p));
     setShowPlaylists(false);
   };
-  const toggleDownload = (track) => {
-    if (isDownloaded(track.id)) { removeDownload(track.id); } else { addDownload(track); }
-    setDownloads(getDownloads());
+  const toggleDownload = async (track) => {
+    if (isDownloaded(track.id)) {
+      removeDownload(track.id);
+      setDownloads(getDownloads());
+    } else {
+      setDownloadingIds(prev => new Set(prev).add(track.id));
+      try {
+        const blob = await downloadAudioBlob(track.id);
+        if (blob) {
+          await saveAudioBlob(track.id, blob);
+          addDownload(track);
+          setDownloads(getDownloads());
+        }
+      } catch {}
+      setDownloadingIds(prev => { const next = new Set(prev); next.delete(track.id); return next; });
+    }
   };
   const toggleFavorite = (track) => {
     const favs = getFavorites();
@@ -428,6 +488,9 @@ function App() {
         <div className="sidebar-links">
           <div className={`sidebar-link ${activeView === 'home' ? 'active' : ''}`} onClick={() => handleNavigate('home')}>
             <span className="icon"><IconHome /></span><span>Home</span>
+          </div>
+          <div className={`sidebar-link ${activeView === 'downloads' ? 'active' : ''}`} onClick={() => handleNavigate('downloads')}>
+            <span className="icon"><svg style={{ width: 20, height: 20, fill: 'currentColor' }} viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg></span><span>Downloads</span>
           </div>
           <div className={`sidebar-link ${activeView === 'friends' ? 'active' : ''}`} onClick={() => handleNavigate('friends')}>
             <span className="icon"><IconFriends /></span><span>Friends</span>
@@ -613,6 +676,39 @@ function App() {
           {activeView === 'admin' && !adminLoggedIn && <AdminLogin onLogin={() => setAdminLoggedIn(true)} />}
           {activeView === 'admin' && adminLoggedIn && <AdminDashboard onLogout={() => setAdminLoggedIn(false)} user={user} />}
           {activeView === 'import' && <ImportPlaylist onPlayTrack={playTrack} />}
+
+          {activeView === 'downloads' && (
+            <div className="tab-view">
+              <div className="section-header">
+                <h2>Downloads</h2>
+                {downloads.length > 0 && <span style={{ color: 'var(--text-secondary)', fontSize: 14 }}>{downloads.length} tracks</span>}
+              </div>
+              {downloads.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 60 }}>
+                  <IconDownload size={48} style={{ color: 'var(--text-secondary)', marginBottom: 16 }} />
+                  <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>No downloads yet</p>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: 12, marginTop: 8 }}>Tap the download icon on any track to save it for offline</p>
+                </div>
+              ) : (
+                <div className="track-list">
+                  {downloads.map((t, i) => {
+                    const isActive = currentTrack?.id === t.id;
+                    const isDownloading = downloadingIds.has(t.id);
+                    return (
+                      <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, downloads)}>
+                        <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                        <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                        <span className="track-duration">{formatDuration(t.duration)}</span>
+                        <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleDownload(t); }} title="Remove download">
+                          <svg style={{ width: 16, height: 16, fill: 'var(--primary)' }} viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {activeView === 'home' && (
             <>

@@ -37,6 +37,11 @@ export async function getStreamUrl(id) {
   const d = await res.json();
   return d.url || null;
 }
+export async function downloadAudioBlob(id) {
+  const res = await authFetch(`${API}/stream/${id}`);
+  if (!res.ok) return null;
+  return res.blob();
+}
 export async function getInfo(id) {
   const res = await authFetch(`${API}/info/${id}`);
   if (!res.ok) throw new Error('Failed to get info');
