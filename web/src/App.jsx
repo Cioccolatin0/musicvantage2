@@ -50,7 +50,6 @@ function App() {
   const [notifs, setNotifs] = useState([]);
   const [showNotifs, setShowNotifs] = useState(false);
 
-  const audioRef = useRef(null);
   const ytPlayerRef = useRef(null);
   const progressRef = useRef(null);
   const startedRef = useRef(false);
@@ -96,6 +95,9 @@ function App() {
     setCurrentTrack(track); setLoadingTrack(track.id); setPlaying(false);
     setLoadingStream(true); setStreamError(false); setCurrentTime(0); setDuration(0);
     setLyrics(null); setLiked(false);
+    if (ytPlayerRef.current) {
+      try { ytPlayerRef.current.loadVideoById(track.id); } catch {}
+    }
   }, [currentTrack?.id]);
 
   const retryStream = useCallback(() => {
@@ -117,8 +119,8 @@ function App() {
   useEffect(() => {
     if (!youtubeReady || !currentTrack) return;
     setLoadingStream(true); setStreamError(false);
-    if (ytPlayerRef.current) { try { ytPlayerRef.current.destroy(); } catch {} ytPlayerRef.current = null; }
-    setTimeout(() => {
+    const p = ytPlayerRef.current;
+    if (!p) {
       try {
         ytPlayerRef.current = new YT.Player('yt-player', {
           videoId: currentTrack.id, height: '240', width: '100%',
@@ -135,7 +137,9 @@ function App() {
           }
         });
       } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-    }, 100);
+    } else {
+      try { p.loadVideoById(currentTrack.id); } catch { setLoadingStream(false); setStreamError(true); }
+    }
   }, [currentTrack?.id, youtubeReady]);
 
   useEffect(() => {
@@ -558,15 +562,16 @@ function App() {
       {showNotifs && user && <Notifications userId={user.id} onClose={() => setShowNotifs(false)} />}
 
       <div id="yt-player" style={{
-        position: 'fixed', bottom: playMode === 'video' ? '90px' : '-9999px',
-        right: '10px', zIndex: 100,
-        width: playMode === 'video' ? '360px' : '320px',
-        height: playMode === 'video' ? '203px' : '180px',
-        opacity: playMode === 'video' ? 1 : 0,
+        position: 'fixed', left: playMode === 'video' ? 'auto' : '1px',
+        bottom: playMode === 'video' ? '90px' : '1px',
+        right: playMode === 'video' ? '10px' : 'auto',
+        zIndex: playMode === 'video' ? 100 : 1,
+        width: playMode === 'video' ? '360px' : '1px',
+        height: playMode === 'video' ? '203px' : '1px',
+        opacity: playMode === 'video' ? 1 : 0.01,
         pointerEvents: playMode === 'video' ? 'auto' : 'none',
         transition: 'all 0.3s ease'
       }} />
-      <audio ref={audioRef} style={{ display: 'none' }} />
     </div>
   );
 }
