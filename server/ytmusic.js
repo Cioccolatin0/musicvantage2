@@ -102,33 +102,26 @@ async function search(query, type = 'all') {
         if (!item || !item.id) continue;
         if (item.type !== 'MusicResponsiveListItem') continue;
 
-        const itemType = item.item_type || '';
-        const isSong = itemType === 'song' || itemType === 'video';
+        const itemType = item.item_type || item.type || '';
+        const isSong = itemType === 'song' || itemType === 'video' || itemType === 'MusicResponsiveListItem';
         const isAlbum = itemType === 'album';
         const isArtist = itemType === 'artist';
-
-        if (!isSong && !isAlbum && !isArtist) continue;
 
         const dur = parseDuration(item.duration);
         const thumb = thumbUrl(item);
         const artist = getArtist(item);
+        const titleStr = (item.title || '').toString();
+        const titleLower = titleStr.toLowerCase();
 
-        if (isSong) {
-          if (seenTracks.has(item.id)) continue;
-          const titleLower = (item.title || '').toString().toLowerCase();
-          const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
-          if (dur > 0 && dur <= 420 && !isMix) {
-            seenTracks.add(item.id);
-            allTracks.push({
-              id: item.id,
-              title: (item.title || 'Unknown').toString(),
-              artist,
-              thumbnail: thumb,
-              duration: dur,
-              url: `https://youtube.com/watch?v=${item.id}`,
-              type: 'track'
-            });
-          }
+        if (isAlbum) {
+          albums.push({
+            id: item.id,
+            title: titleStr || 'Unknown',
+            artist,
+            thumbnail: thumb,
+            trackCount: item.song_count || item.track_count || 0,
+            type: 'album'
+          });
         } else if (isArtist) {
           artists.push({
             id: item.id,
@@ -137,15 +130,21 @@ async function search(query, type = 'all') {
             trackCount: 0,
             type: 'artist'
           });
-        } else if (isAlbum) {
-          albums.push({
-            id: item.id,
-            title: item.title || 'Unknown',
-            artist,
-            thumbnail: thumb,
-            trackCount: item.song_count || item.track_count || 0,
-            type: 'album'
-          });
+        } else if (isSong) {
+          if (seenTracks.has(item.id)) continue;
+          const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
+          if (dur > 0 && dur <= 420 && !isMix) {
+            seenTracks.add(item.id);
+            allTracks.push({
+              id: item.id,
+              title: titleStr || 'Unknown',
+              artist,
+              thumbnail: thumb,
+              duration: dur,
+              url: `https://youtube.com/watch?v=${item.id}`,
+              type: 'track'
+            });
+          }
         }
       }
     } catch {}
@@ -210,8 +209,9 @@ async function getRelatedTracks(artistName) {
       if (!section.contents) continue;
       for (const item of section.contents) {
         if (!item || !item.id || item.type !== 'MusicResponsiveListItem') continue;
-        const itemType = item.item_type || '';
-        if (itemType !== 'song' && itemType !== 'video') continue;
+        const itemType = item.item_type || item.type || '';
+        const isSong = itemType === 'song' || itemType === 'video' || itemType === 'MusicResponsiveListItem';
+        if (!isSong) continue;
         const titleLower = (item.title || '').toString().toLowerCase();
         const isMix = MIX_KEYWORDS.some(kw => titleLower.includes(kw));
         const dur = parseDuration(item.duration);

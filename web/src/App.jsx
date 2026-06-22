@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket } from './api';
 import { formatDuration } from './utils';
+import { getCachedSearch, setCachedSearch, getRecentTracks, addRecentTrack, getDownloads, addDownload, removeDownload, isDownloaded } from './cache';
 import Sidebar from './Sidebar';
 import PlayerBar from './PlayerBar';
 import QueuePanel from './QueuePanel';
@@ -50,6 +51,9 @@ function App() {
   const [showNotifs, setShowNotifs] = useState(false);
   const [artistInfo, setArtistInfo] = useState(null);
   const [artistLoading, setArtistLoading] = useState(false);
+  const [recentTracks, setRecentTracks] = useState(() => getRecentTracks());
+  const [downloads, setDownloads] = useState(() => getDownloads());
+  const [recommended, setRecommended] = useState([]);
 
   const ytPlayerRef = useRef(null);
   const progressRef = useRef(null);
@@ -90,11 +94,16 @@ function App() {
     } catch {}
   }, [user]);
 
-  const doSearch = useCallback(async (q, f) => {
+  const doSearch = useCallback(async (q, f, skipCache) => {
     if (!q.trim()) return;
     setLoading(true); setError(''); setActiveView('home');
+    if (!skipCache) {
+      const cached = getCachedSearch(q);
+      if (cached) { setResults(cached); setLoading(false); return; }
+    }
     try {
       const res = await search(q, f);
+      setCachedSearch(q, res);
       setResults(res);
     } catch (e) { setError(e.message || 'Search failed'); }
     finally { setLoading(false); }
@@ -154,6 +163,8 @@ function App() {
     setCurrentTrack(track); setLoadingTrack(track.id); setPlaying(false);
     setLoadingStream(true); setStreamError(false); setCurrentTime(0); setDuration(0);
     setLyrics(null); setLiked(false);
+    addRecentTrack(track);
+    setRecentTracks(getRecentTracks());
   }, [currentTrack?.id]);
 
   const retryStream = useCallback(() => {
@@ -273,6 +284,10 @@ function App() {
     setPlaylists(pl => pl.map((p, i) => i === playlistIdx ? { ...p, tracks: [...p.tracks, currentTrack] } : p));
     setShowPlaylists(false);
   };
+  const toggleDownload = (track) => {
+    if (isDownloaded(track.id)) { removeDownload(track.id); } else { addDownload(track); }
+    setDownloads(getDownloads());
+  };
 
   // Social auth
   const handleRegister = async (username, email, password, referralCode) => {
@@ -286,6 +301,17 @@ function App() {
     return u?.error || 'Invalid credentials';
   };
   const handleLogout = () => setUser(null);
+
+  useEffect(() => {
+    if (!results && recentTracks.length > 0) {
+      const artist = recentTracks[0]?.artist;
+      if (artist && artist !== 'Unknown') {
+        getRelatedTracks(artist).then(tracks => {
+          setRecommended(tracks.filter(t => !recentTracks.find(r => r.id === t.id)).slice(0, 10));
+        }).catch(() => {});
+      }
+    }
+  }, [recentTracks, results]);
 
   // Notifications polling
   useEffect(() => {
@@ -503,6 +529,7 @@ function App() {
               )}
             </div>
           )}
+
           {artistLoading && <p style={{ padding: 24 }}>Loading artist...</p>}
 
           {activeView === 'admin' && !adminLoggedIn && <AdminLogin onLogin={() => setAdminLoggedIn(true)} />}
@@ -512,11 +539,73 @@ function App() {
           {activeView === 'home' && (
             <>
               {!results && !loading && !error && (
-                <div className="hero">
-                  <div className="hero-glow" />
-                  <h2>Listen to any song, anytime</h2>
-                  <p>Search millions of tracks powered by YouTube</p>
-                </div>
+                <>
+                  <div className="hero">
+                    <div className="hero-glow" />
+                    <h2>Listen to any song, anytime</h2>
+                    <p>Search millions of tracks powered by YouTube</p>
+                  </div>
+                  {recentTracks.length > 0 && (
+                    <section className="section">
+                      <h3>Continue listening</h3>
+                      <div className="track-list">
+                        {recentTracks.slice(0, 8).map((t, i) => {
+                          const isActive = currentTrack?.id === t.id;
+                          return (
+                            <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, recentTracks)}>
+                              <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                              <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                              <span className="track-duration">{formatDuration(t.duration)}</span>
+                              <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleDownload(t); }} title={isDownloaded(t.id) ? 'Remove download' : 'Download for offline'}>
+                                <svg style={{ width: 16, height: 16, fill: isDownloaded(t.id) ? 'var(--primary)' : 'currentColor' }} viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+                  {downloads.length > 0 && (
+                    <section className="section">
+                      <h3>Downloaded</h3>
+                      <div className="track-list">
+                        {downloads.slice(0, 6).map((t, i) => {
+                          const isActive = currentTrack?.id === t.id;
+                          return (
+                            <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, downloads)}>
+                              <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                              <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                              <span className="track-duration">{formatDuration(t.duration)}</span>
+                              <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleDownload(t); }} title="Remove download">
+                                <svg style={{ width: 16, height: 16, fill: 'var(--primary)' }} viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+                  {recommended.length > 0 && (
+                    <section className="section">
+                      <h3>Recommended for you</h3>
+                      <div className="track-list">
+                        {recommended.map((t, i) => {
+                          const isActive = currentTrack?.id === t.id;
+                          return (
+                            <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, recommended)}>
+                              <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                              <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                              <span className="track-duration">{formatDuration(t.duration)}</span>
+                              <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleDownload(t); }} title={isDownloaded(t.id) ? 'Remove download' : 'Download'}>
+                                <svg style={{ width: 16, height: 16, fill: isDownloaded(t.id) ? 'var(--primary)' : 'currentColor' }} viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+                </>
               )}
               {loading && (
                 <div className="loading-skeleton">
@@ -583,15 +672,18 @@ function App() {
                               <img src={t.thumbnail} alt={t.title} loading="lazy" />
                               <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
                               <span className="track-duration">{formatDuration(t.duration)}</span>
-                              <button className="icon-btn track-more" onClick={e => { e.stopPropagation(); setCurrentTrack(t); setShowPlaylists(true); }}>+</button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  )}
+                          <button className="icon-btn track-more" onClick={e => { e.stopPropagation(); setCurrentTrack(t); setShowPlaylists(true); }}>+</button>
+                          <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleDownload(t); }} title={isDownloaded(t.id) ? 'Remove download' : 'Download'}>
+                            <svg style={{ width: 16, height: 16, fill: isDownloaded(t.id) ? 'var(--primary)' : 'currentColor' }} viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
 
-                  {relatedTracks.length > 0 && (
+              {relatedTracks.length > 0 && (
                     <section className="section">
                       <h3>More by {mainTrack?.artist || 'this artist'}</h3>
                       <div className="track-list">
@@ -603,6 +695,9 @@ function App() {
                               <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
                               <span className="track-duration">{formatDuration(t.duration)}</span>
                               <button className="icon-btn track-more" onClick={e => { e.stopPropagation(); setCurrentTrack(t); setShowPlaylists(true); }}>+</button>
+                              <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleDownload(t); }} title={isDownloaded(t.id) ? 'Remove download' : 'Download'}>
+                                <svg style={{ width: 16, height: 16, fill: isDownloaded(t.id) ? 'var(--primary)' : 'currentColor' }} viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                              </button>
                             </div>
                           );
                         })}
@@ -622,6 +717,9 @@ function App() {
                               <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
                               <span className="track-duration">{formatDuration(t.duration)}</span>
                               <button className="icon-btn track-more" onClick={e => { e.stopPropagation(); setCurrentTrack(t); setShowPlaylists(true); }}>+</button>
+                              <button className="icon-btn" onClick={e => { e.stopPropagation(); toggleDownload(t); }} title={isDownloaded(t.id) ? 'Remove download' : 'Download'}>
+                                <svg style={{ width: 16, height: 16, fill: isDownloaded(t.id) ? 'var(--primary)' : 'currentColor' }} viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                              </button>
                             </div>
                           );
                         })}
