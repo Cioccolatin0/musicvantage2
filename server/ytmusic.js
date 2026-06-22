@@ -28,13 +28,17 @@ async function getInnertube() {
 
 function thumbUrl(item) {
   if (item.thumbnails && item.thumbnails.length > 0) {
-    const thumbs = item.thumbnails;
-    return thumbs[thumbs.length - 1].url || thumbs[0].url;
+    const t = item.thumbnails[item.thumbnails.length - 1];
+    return t.url || t.contentUrl || '';
+  }
+  if (item.thumbnail && item.thumbnail.length > 0) {
+    const t = item.thumbnail[item.thumbnail.length - 1];
+    return t.url || t.contentUrl || '';
   }
   if (item.id && item.id.length === 11 && /^[a-zA-Z0-9_-]+$/.test(item.id)) {
     return `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`;
   }
-  return `https://i.ytimg.com/vi/${item.id || 'default'}/hqdefault.jpg`;
+  return '';
 }
 
 function parseDuration(dur) {
