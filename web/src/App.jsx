@@ -118,23 +118,41 @@ function App() {
   }, [queue, currentTrack, shuffle, repeat, getShuffledIndex]);
 
   const playTrack = useCallback((track, trackList) => {
-    if (trackList) setQueue(trackList);
-    if (ytPlayerRef.current && currentTrack?.id === track.id) {
-      try { ytPlayerRef.current.seekTo(0); ytPlayerRef.current.playVideo(); } catch {}
+    const p = ytPlayerRef.current;
+    if (p && currentTrack?.id === track.id) {
+      try { p.seekTo(0); p.playVideo(); } catch {}
       return;
     }
+    if (p) {
+      try { p.loadVideoById(track.id); p.playVideo(); } catch {}
+    } else {
+      try {
+        ytPlayerRef.current = new YT.Player('yt-player', {
+          videoId: track.id, height: '1', width: '1',
+          playerVars: { modestbranding: 1, rel: 0, controls: 0, playsinline: 1, fs: 0, disablekb: 1 },
+          events: {
+            onReady: (e) => { try { e.target.playVideo(); } catch {} },
+            onStateChange: (e) => {
+              if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
+              else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
+              else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
+              else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
+            },
+            onError: () => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+          }
+        });
+      } catch {}
+    }
+    if (trackList) setQueue(trackList);
     setCurrentTrack(track); setLoadingTrack(track.id); setPlaying(false);
     setLoadingStream(true); setStreamError(false); setCurrentTime(0); setDuration(0);
     setLyrics(null); setLiked(false);
-    if (ytPlayerRef.current) {
-      try { ytPlayerRef.current.loadVideoById(track.id); } catch {}
-    }
   }, [currentTrack?.id]);
 
   const retryStream = useCallback(() => {
     if (!currentTrack || !ytPlayerRef.current) return;
     setStreamError(false); setLoadingStream(true);
-    try { ytPlayerRef.current.loadVideoById(currentTrack.id); } catch { setLoadingStream(false); }
+    try { ytPlayerRef.current.loadVideoById(currentTrack.id); ytPlayerRef.current.playVideo(); } catch { setLoadingStream(false); }
   }, [currentTrack]);
 
   useEffect(() => {
@@ -166,13 +184,6 @@ function App() {
       });
     } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
   }, [youtubeReady]);
-
-  useEffect(() => {
-    const p = ytPlayerRef.current;
-    if (!p || !currentTrack) return;
-    setLoadingStream(true); setStreamError(false);
-    try { p.loadVideoById(currentTrack.id); } catch { setLoadingStream(false); setStreamError(true); }
-  }, [currentTrack?.id]);
 
   useEffect(() => {
     if (!playing) return;
