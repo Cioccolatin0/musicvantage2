@@ -23,9 +23,48 @@ app.get('/api/config', async (req, res) => {
   res.json({ key });
 });
 
-app.use('/api', auth.apiKeyMiddleware);
+app.get('/api/debug/search', async (req, res) => {
+  try {
+    const q = req.query.q || 'test';
+    const { getInnertube } = require('./ytmusic');
+    const yt = await getInnertube();
+    const results = await yt.music.search(q);
+    const sections = [];
+    for (const section of results.contents || []) {
+      const sectionInfo = {
+        title: (section.title || '').toString(),
+        type: section.type,
+        itemCount: section.contents ? section.contents.length : 0,
+        items: []
+      };
+      if (section.contents) {
+        for (const item of section.contents) {
+          sectionInfo.items.push({
+            id: item.id,
+            type: item.type,
+            item_type: item.item_type,
+            title: (item.title || item.name || '').toString(),
+            duration: item.duration,
+            duration_type: typeof item.duration,
+            has_thumbnails: !!(item.thumbnails && item.thumbnails.length > 0),
+            has_artists: !!(item.artists && item.artists.length > 0),
+            keys: Object.keys(item).slice(0, 20)
+          });
+        }
+      }
+      sections.push(sectionInfo);
+    }
+    res.json({
+      songsAccessor: results.songs ? { title: results.songs.title?.toString(), count: results.songs.contents?.length } : null,
+      videosAccessor: results.videos ? { title: results.videos.title?.toString(), count: results.videos.contents?.length } : null,
+      albumsAccessor: results.albums ? { title: results.albums.title?.toString(), count: results.albums.contents?.length } : null,
+      artistsAccessor: results.artists ? { title: results.artists.title?.toString(), count: results.artists.contents?.length } : null,
+      sections
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
-// --- Social Auth ---
+app.use('/api', auth.apiKeyMiddleware);
 app.post('/api/social/register', async (req, res) => {
   try {
     const { username, email, password, referralCode } = req.body;
@@ -203,47 +242,6 @@ app.get('/api/related/:artistName', async (req, res) => {
     req.setTimeout(15000);
     const tracks = await getRelatedTracks(decodeURIComponent(req.params.artistName));
     res.json(tracks);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/debug/search', async (req, res) => {
-  try {
-    const q = req.query.q || 'test';
-    const { getInnertube } = require('./ytmusic');
-    const yt = await getInnertube();
-    const results = await yt.music.search(q);
-    const sections = [];
-    for (const section of results.contents || []) {
-      const sectionInfo = {
-        title: (section.title || '').toString(),
-        type: section.type,
-        itemCount: section.contents ? section.contents.length : 0,
-        items: []
-      };
-      if (section.contents) {
-        for (const item of section.contents) {
-          sectionInfo.items.push({
-            id: item.id,
-            type: item.type,
-            item_type: item.item_type,
-            title: (item.title || item.name || '').toString(),
-            duration: item.duration,
-            duration_type: typeof item.duration,
-            has_thumbnails: !!(item.thumbnails && item.thumbnails.length > 0),
-            has_artists: !!(item.artists && item.artists.length > 0),
-            keys: Object.keys(item).slice(0, 20)
-          });
-        }
-      }
-      sections.push(sectionInfo);
-    }
-    res.json({
-      songsAccessor: results.songs ? { title: results.songs.title?.toString(), count: results.songs.contents?.length } : null,
-      videosAccessor: results.videos ? { title: results.videos.title?.toString(), count: results.videos.contents?.length } : null,
-      albumsAccessor: results.albums ? { title: results.albums.title?.toString(), count: results.albums.contents?.length } : null,
-      artistsAccessor: results.artists ? { title: results.artists.title?.toString(), count: results.artists.contents?.length } : null,
-      sections
-    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
