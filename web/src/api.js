@@ -32,10 +32,9 @@ export async function search(query, type = 'all') {
   return res.json();
 }
 export async function getStreamUrl(id) {
-  const res = await authFetch(`${API}/stream/url/${id}`);
-  if (!res.ok) return null;
-  const d = await res.json();
-  return d.url || null;
+  await configPromise;
+  const keyParam = apiKey ? `?key=${encodeURIComponent(apiKey)}` : '';
+  return `${API}/stream/${id}${keyParam}`;
 }
 export async function downloadAudioBlob(id) {
   const res = await authFetch(`${API}/stream/${id}`);
