@@ -269,15 +269,16 @@ function App() {
         height: '1', width: '1',
         playerVars: { modestbranding: 1, rel: 0, controls: 0, playsinline: 1, fs: 0, disablekb: 1 },
         events: {
-          onReady: () => {},
-          onStateChange: (e) => {
-            if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
-            else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
-            else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
-            else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
-          },
-          onError: () => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-        }
+            onReady: () => {},
+            onStateChange: (e) => {
+              if (bgAudioRef.current && bgAudioRef.current.src && !bgAudioRef.current.paused) return;
+              if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
+              else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
+              else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
+              else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
+            },
+            onError: () => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+          }
       });
     } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
   }, [youtubeReady]);
