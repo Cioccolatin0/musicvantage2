@@ -64,6 +64,16 @@ app.get('/api/debug/search', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+app.get('/api/debug/stream/:id', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const results = { id, ytDlp: null, ytMusic: null };
+    try { results.ytDlp = await ytdlp.getStreamUrl(id) || 'null'; } catch (e) { results.ytDlp = 'error: ' + e.message; }
+    try { results.ytMusic = await ytMusicStreamUrl(id) || 'null'; } catch (e) { results.ytMusic = 'error: ' + e.message; }
+    res.json(results);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.use('/api', auth.apiKeyMiddleware);
 app.post('/api/social/register', async (req, res) => {
   try {
