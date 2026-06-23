@@ -68,12 +68,15 @@ app.get('/api/debug/stream/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const { getInnertube } = require('./ytmusic');
-    const results = { id, steps: {} };
+    const results = { id, steps: {}, env: {} };
+    results.env.cookiesFile = process.env.YT_COOKIES_FILE || 'not set';
+    results.env.ytProxy = process.env.YT_PROXY || 'not set';
+    results.env.ytProxyList = process.env.YT_PROXY_LIST || 'not set';
     try {
       const yt = await getInnertube();
       results.steps.innertube = 'ok';
       const info = await yt.getInfo(id);
-      results.steps.basicInfo = 'ok';
+      results.steps.getInfo = 'ok';
       const sd = info.streaming_data;
       results.steps.hasStreamingData = !!sd;
       if (sd) {
@@ -82,34 +85,25 @@ app.get('/api/debug/stream/:id', async (req, res) => {
         results.steps.adaptiveCount = adaptive.length;
         results.steps.regularCount = regular.length;
         const allFormats = [...adaptive, ...regular];
-        results.steps.formatSummary = allFormats.map(f => ({
-          mime: f.mime_type,
-          hasUrl: !!f.url,
-          hasCipher: !!(f.signatureCipher || f.decipher),
-          bitrate: f.bitrate
-        }));
         const audio = allFormats.find(f => f.mime_type && f.mime_type.startsWith('audio/'));
         if (audio) {
-          results.steps.audioFound = true;
           results.steps.audioHasUrl = !!audio.url;
           results.steps.audioHasCipher = !!(audio.signatureCipher || audio.decipher);
-          if (audio.url) results.steps.audioUrl = audio.url.substring(0, 100) + '...';
+          if (audio.url) results.steps.audioUrl = audio.url.substring(0, 120) + '...';
           else if (audio.decipher) {
             try {
               const deciphered = audio.decipher(yt.session.player);
               results.steps.decipherOk = !!deciphered;
-              if (deciphered) results.steps.decipherUrl = deciphered.substring(0, 100) + '...';
+              if (deciphered) results.steps.decipherUrl = deciphered.substring(0, 120) + '...';
             } catch (e) { results.steps.decipherError = e.message; }
-          } else if (audio.signatureCipher) {
-            results.steps.signatureCipher = audio.signatureCipher.substring(0, 100) + '...';
           }
-        } else {
-          results.steps.audioFound = false;
         }
+      } else {
+        results.steps.allFormatCount = (info.streaming_data?.adaptive_formats || []).length;
+        const bi = info.basic_info || {};
+        results.steps.playability = bi.playability_status || info.playability_status || 'unknown';
       }
     } catch (e) { results.steps.error = e.message; }
-    try { results.ytDlp = await ytdlp.getStreamUrl(id) || 'null'; } catch (e) { results.ytDlp = 'error: ' + e.message; }
-    try { results.ytMusic = await ytMusicStreamUrl(id) || 'null'; } catch (e) { results.ytMusic = 'error: ' + e.message; }
     res.json(results);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
