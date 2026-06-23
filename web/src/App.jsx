@@ -148,6 +148,9 @@ function App() {
     return null;
   }, [queue, currentTrack, shuffle, repeat, getShuffledIndex]);
 
+  const isIOSRef = useRef(typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
+  const isIOS = isIOSRef.current;
+
   // Pre-fetch stream URLs AND audio data for instant playback on iOS
   const prefetchStreamUrl = useCallback((trackId) => {
     if (streamUrlCache.current.has(trackId)) {
@@ -208,9 +211,6 @@ function App() {
     }
     bgAudioRef.current = null;
   }, []);
-
-  const isIOSRef = useRef(typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
-  const isIOS = isIOSRef.current;
 
   const playTrack = useCallback((track, trackList) => {
     const instanceId = ++audioInstanceRef.current;
