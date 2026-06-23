@@ -21,7 +21,7 @@ export default function AdminDashboard({ onLogout, user }) {
     setLoading(true);
     try {
       const list = await adminListApps();
-      setApps(list);
+      setApps(Array.isArray(list) ? list : []);
     } catch {
       setError('Failed to load apps');
     } finally {
@@ -32,14 +32,18 @@ export default function AdminDashboard({ onLogout, user }) {
   const loadUsers = useCallback(async () => {
     setUsersLoading(true);
     try {
-      setUsers(await adminGetUsers());
+      const list = await adminGetUsers();
+      setUsers(Array.isArray(list) ? list : []);
     } catch {}
     setUsersLoading(false);
   }, []);
 
   const loadMyCodes = useCallback(async () => {
     if (!user?.id) return;
-    try { setMyCodes(await getMyReferralCodes(user.id)); } catch {}
+    try {
+      const codes = await getMyReferralCodes(user.id);
+      setMyCodes(Array.isArray(codes) ? codes : []);
+    } catch {}
   }, [user?.id]);
 
   useEffect(() => { loadApps(); }, [loadApps]);
