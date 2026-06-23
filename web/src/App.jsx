@@ -209,7 +209,8 @@ function App() {
     bgAudioRef.current = null;
   }, []);
 
-  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isIOSRef = useRef(typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
+  const isIOS = isIOSRef.current;
 
   const playTrack = useCallback((track, trackList) => {
     const instanceId = ++audioInstanceRef.current;
@@ -508,8 +509,44 @@ function App() {
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  // No visibilitychange handler needed — native <audio> plays in background on iOS
-  // Just cleanup on unmount
+  // Background audio keepalive for iOS
+  const audioCtxRef = useRef(null);
+  useEffect(() => {
+    const initAudioCtx = () => {
+      if (audioCtxRef.current) return;
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        const ctx = new AC();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        audioCtxRef.current = ctx;
+      } catch {}
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+          audioCtxRef.current.resume().catch(() => {});
+        }
+      }
+    };
+    const onInteraction = () => { initAudioCtx(); };
+    document.addEventListener('click', onInteraction, { once: true });
+    document.addEventListener('touchstart', onInteraction, { once: true });
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('click', onInteraction);
+      document.removeEventListener('touchstart', onInteraction);
+      document.removeEventListener('visibilitychange', onVisibility);
+      try { audioCtxRef.current?.close(); } catch {}
+    };
+  }, []);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopCurrentAudio();

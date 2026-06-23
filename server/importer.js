@@ -1,4 +1,4 @@
-const { runYtDlp } = require('./ytdlp');
+const { getInnertube, search: ytSearch } = require('./ytmusic');
 const crypto = require('crypto');
 const db = require('./db');
 
@@ -34,47 +34,48 @@ async function deletePlaylist(id) {
   return rowCount > 0;
 }
 
-function parseYtDlpJson(raw) {
-  return raw.split('\n').filter(Boolean).map(line => {
-    try {
-      const i = JSON.parse(line);
-      return {
-        id: i.id,
-        title: i.title || 'Unknown',
-        artist: i.uploader || i.channel || 'Unknown',
-        thumbnail: `https://i.ytimg.com/vi/${i.id}/hqdefault.jpg`,
-        duration: i.duration || 0,
-        url: `https://youtube.com/watch?v=${i.id}`,
-        type: 'track'
-      };
-    } catch { return null; }
-  }).filter(Boolean);
-}
-
 async function ytSearchOne(query) {
-  const raw = await runYtDlp([
-    '--dump-json', '--flat-playlist', '--no-playlist',
-    `ytsearch1:${query}`
-  ], 30000);
-  const firstLine = raw.split('\n')[0];
-  if (!firstLine) return null;
-  const i = JSON.parse(firstLine);
-  return i;
+  const results = await ytSearch(query);
+  if (results.mainTrack) {
+    return { id: results.mainTrack.id, title: results.mainTrack.title, uploader: results.mainTrack.artist, duration: results.mainTrack.duration };
+  }
+  if (results.tracks && results.tracks.length > 0) {
+    const t = results.tracks[0];
+    return { id: t.id, title: t.title, uploader: t.artist, duration: t.duration };
+  }
+  return null;
 }
 
 async function importFromYoutube(url) {
-  const raw = await runYtDlp([
-    '--flat-playlist', '--dump-json', '--no-warnings', url
-  ], 180000);
+  const playlistId = url.match(/list=([a-zA-Z0-9_-]+)/)?.[1];
+  if (!playlistId) throw new Error('Invalid YouTube playlist URL');
 
-  const tracks = parseYtDlpJson(raw);
-  let name = 'Imported Playlist';
-  if (tracks.length > 0) {
-    try {
-      const first = JSON.parse(raw.split('\n')[0]);
-      name = first.playlist_title || first.playlist || name;
-    } catch {}
+  const yt = await getInnertube();
+  let playlistInfo;
+  try { playlistInfo = await yt.getPlaylist(playlistId); } catch { playlistInfo = null; }
+  const name = playlistInfo?.title || 'YouTube Playlist';
+
+  let tracks = [];
+  if (playlistInfo?.videos) {
+    for (const v of playlistInfo.videos) {
+      if (v.id) {
+        tracks.push({
+          id: v.id,
+          title: v.title?.text || v.title || 'Unknown',
+          artist: v.short_byline_text?.runs?.[0]?.text || 'Unknown',
+          thumbnail: v.thumbnail?.thumbnails?.slice(-1)?.[0]?.url || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+          duration: v.length_seconds ? parseInt(v.length_seconds) : 0,
+          url: `https://youtube.com/watch?v=${v.id}`,
+          type: 'track'
+        });
+      }
+    }
   }
+
+  if (tracks.length === 0) {
+    throw new Error('Could not extract tracks from YouTube playlist');
+  }
+
   return { tracks, name };
 }
 

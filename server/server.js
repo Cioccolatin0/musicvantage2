@@ -4,8 +4,7 @@ const { Server } = require('socket.io');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics, getStreamUrl: ytMusicStreamUrl, getArtistInfo, getRelatedTracks } = require('./ytmusic');
-const ytdlp = require('./ytdlp');
+const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics, getArtistInfo, getRelatedTracks } = require('./ytmusic');
 const auth = require('./auth');
 const social = require('./social');
 
@@ -23,90 +22,7 @@ app.get('/api/config', async (req, res) => {
   res.json({ key });
 });
 
-app.get('/api/debug/search', async (req, res) => {
-  try {
-    const q = req.query.q || 'test';
-    const { getInnertube } = require('./ytmusic');
-    const yt = await getInnertube();
-    const results = await yt.music.search(q);
-    const sections = [];
-    for (const section of results.contents || []) {
-      const sectionInfo = {
-        title: (section.title || '').toString(),
-        type: section.type,
-        itemCount: section.contents ? section.contents.length : 0,
-        items: []
-      };
-      if (section.contents) {
-        for (const item of section.contents) {
-          sectionInfo.items.push({
-            id: item.id,
-            type: item.type,
-            item_type: item.item_type,
-            title: (item.title || item.name || '').toString(),
-            duration: item.duration,
-            duration_type: typeof item.duration,
-            has_thumbnails: !!(item.thumbnails && item.thumbnails.length > 0),
-            has_artists: !!(item.artists && item.artists.length > 0),
-            keys: Object.keys(item).slice(0, 20)
-          });
-        }
-      }
-      sections.push(sectionInfo);
-    }
-    res.json({
-      songsAccessor: results.songs ? { title: results.songs.title?.toString(), count: results.songs.contents?.length } : null,
-      videosAccessor: results.videos ? { title: results.videos.title?.toString(), count: results.videos.contents?.length } : null,
-      albumsAccessor: results.albums ? { title: results.albums.title?.toString(), count: results.albums.contents?.length } : null,
-      artistsAccessor: results.artists ? { title: results.artists.title?.toString(), count: results.artists.contents?.length } : null,
-      sections
-    });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
 
-app.get('/api/debug/stream/:id', async (req, res) => {
-  try {
-    const id = req.params.id;
-    const { getInnertube } = require('./ytmusic');
-    const results = { id, steps: {}, env: {} };
-    results.env.cookiesFile = process.env.YT_COOKIES_FILE || 'not set';
-    results.env.ytProxy = process.env.YT_PROXY || 'not set';
-    results.env.ytProxyList = process.env.YT_PROXY_LIST || 'not set';
-    try {
-      const yt = await getInnertube();
-      results.steps.innertube = 'ok';
-      const info = await yt.getInfo(id);
-      results.steps.getInfo = 'ok';
-      const sd = info.streaming_data;
-      results.steps.hasStreamingData = !!sd;
-      if (sd) {
-        const adaptive = sd.adaptive_formats || [];
-        const regular = sd.formats || [];
-        results.steps.adaptiveCount = adaptive.length;
-        results.steps.regularCount = regular.length;
-        const allFormats = [...adaptive, ...regular];
-        const audio = allFormats.find(f => f.mime_type && f.mime_type.startsWith('audio/'));
-        if (audio) {
-          results.steps.audioHasUrl = !!audio.url;
-          results.steps.audioHasCipher = !!(audio.signatureCipher || audio.decipher);
-          if (audio.url) results.steps.audioUrl = audio.url.substring(0, 120) + '...';
-          else if (audio.decipher) {
-            try {
-              const deciphered = audio.decipher(yt.session.player);
-              results.steps.decipherOk = !!deciphered;
-              if (deciphered) results.steps.decipherUrl = deciphered.substring(0, 120) + '...';
-            } catch (e) { results.steps.decipherError = e.message; }
-          }
-        }
-      } else {
-        results.steps.allFormatCount = (info.streaming_data?.adaptive_formats || []).length;
-        const bi = info.basic_info || {};
-        results.steps.playability = bi.playability_status || info.playability_status || 'unknown';
-      }
-    } catch (e) { results.steps.error = e.message; }
-    res.json(results);
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
 
 app.use('/api', auth.apiKeyMiddleware);
 app.post('/api/social/register', async (req, res) => {
@@ -267,7 +183,7 @@ app.get('/api/search', async (req, res) => {
     req.setTimeout(30000);
     let results;
     try { results = await ytMusicSearch(q, type); }
-    catch { results = await ytdlp.search(q, type); }
+    catch (err) { return res.status(500).json({ error: err.message }); }
     res.json(results);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -291,9 +207,8 @@ app.get('/api/related/:artistName', async (req, res) => {
 
 app.get('/api/info/:id', async (req, res) => {
   try {
-    let info;
-    try { info = await ytMusicInfo(req.params.id); }
-    catch { info = await ytdlp.getVideoInfo(req.params.id); }
+    const info = await ytMusicInfo(req.params.id);
+    if (!info) return res.status(404).json({ error: 'Not found' });
     res.json(info);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -306,70 +221,7 @@ app.get('/api/lyrics/:id', async (req, res) => {
   } catch { res.status(500).json({ error: 'Lyrics error' }); }
 });
 
-app.get('/api/stream/:id', async (req, res) => {
-  try {
-    req.setTimeout(120000);
-    let url = null;
-    try { url = await ytMusicStreamUrl(req.params.id); } catch {}
-    if (!url) {
-      try { url = await ytdlp.getStreamUrl(req.params.id); } catch {}
-    }
-    if (!url) return res.status(404).json({ error: 'Stream not found' });
-
-    const isHttps = url.startsWith('https');
-    const httpModule = isHttps ? require('https') : require('http');
-
-    const headers = { 'User-Agent': 'Mozilla/5.0' };
-    if (req.headers.range) headers['Range'] = req.headers.range;
-
-    httpModule.get(url, { headers }, (upstream) => {
-      if (upstream.statusCode === 302 || upstream.statusCode === 301) {
-        const redirectUrl = upstream.headers.location;
-        if (redirectUrl) {
-          const redirModule = redirectUrl.startsWith('https') ? require('https') : require('http');
-          redirModule.get(redirectUrl, { headers }, (upstream2) => {
-            proxyStream(upstream2, req, res);
-          }).on('error', () => res.status(502).json({ error: 'Upstream error' }));
-          return;
-        }
-      }
-      proxyStream(upstream, req, res);
-    }).on('error', () => res.status(502).json({ error: 'Upstream error' }));
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-function proxyStream(upstream, req, res) {
-  const status = upstream.statusCode === 206 ? 206 : 200;
-  const resHeaders = {
-    'Content-Type': upstream.headers['content-type'] || 'audio/mpeg',
-    'Accept-Ranges': 'bytes',
-    'Cache-Control': 'public, max-age=86400',
-  };
-  if (upstream.headers['content-length']) resHeaders['Content-Length'] = upstream.headers['content-length'];
-  if (upstream.headers['content-range']) resHeaders['Content-Range'] = upstream.headers['content-range'];
-  res.writeHead(status, resHeaders);
-  upstream.pipe(res);
-  upstream.on('error', () => { try { res.end(); } catch {} });
-}
-
-app.get('/api/stream/url/:id', async (req, res) => {
-  try {
-    let url = null;
-    try { url = await ytMusicStreamUrl(req.params.id); } catch {}
-    if (!url) {
-      try { url = await ytdlp.getStreamUrl(req.params.id); } catch {}
-    }
-    if (url) res.json({ url });
-    else res.status(404).json({ error: 'Stream not found' });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/stream/prefetch', async (req, res) => {
-  const { ids } = req.body;
-  if (!ids || !Array.isArray(ids)) return res.json({ ok: false });
-  res.json({ ok: true });
-  for (const id of ids) { ytdlp.getStreamUrl(id).catch(() => {}); }
-});
+// Stream routes removed — YouTube IFrame handles playback client-side
 
 // === IMPORT / PLAYLIST ROUTES ===
 const importer = require('./importer');
