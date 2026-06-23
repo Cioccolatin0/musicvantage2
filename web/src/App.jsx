@@ -279,6 +279,8 @@ function App() {
         bg.preload = 'auto';
         bg.src = src;
         bg.volume = volume;
+        bg.setAttribute('playsinline', '');
+        bg.style.display = 'none';
         bg.onended = () => {
           if (instanceId !== audioInstanceRef.current) return;
           if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
@@ -293,6 +295,8 @@ function App() {
         document.body.appendChild(bg);
         bgAudioRef.current = bg;
 
+        // Try to play immediately — this "unlocks" the audio element on iOS
+        // even if it rejects because media isn't loaded yet
         const playPromise = bg.play();
         if (playPromise) {
           playPromise.then(() => {
@@ -300,7 +304,19 @@ function App() {
             setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
           }).catch(() => {
             if (instanceId !== audioInstanceRef.current) return;
-            fallbackToYoutube();
+            // Safari: play() rejected because media not buffered yet
+            // Wait for canplaythrough and retry instead of falling back
+            bg.addEventListener('canplaythrough', function onCanPlay() {
+              bg.removeEventListener('canplaythrough', onCanPlay);
+              if (instanceId !== audioInstanceRef.current) return;
+              bg.play().then(() => {
+                if (instanceId !== audioInstanceRef.current) return;
+                setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
+              }).catch(() => {
+                if (instanceId !== audioInstanceRef.current) return;
+                fallbackToYoutube();
+              });
+            });
           });
         }
 
@@ -338,6 +354,8 @@ function App() {
       const bg = new Audio();
       bg.id = 'soundusic-bg-audio';
       bg.preload = 'auto'; bg.src = blobUrl || url; bg.volume = volume;
+      bg.setAttribute('playsinline', '');
+      bg.style.display = 'none';
 
       // Append to DOM to prevent iOS Safari/PWA from suspending background playback
       document.body.appendChild(bg);
@@ -358,7 +376,18 @@ function App() {
         setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
       }).catch(() => {
         if (instanceId !== audioInstanceRef.current) return;
-        setLoadingStream(false); setLoadingTrack(null); setStreamError(true);
+        // Safari: wait for canplaythrough and retry
+        bg.addEventListener('canplaythrough', function onCanPlay() {
+          bg.removeEventListener('canplaythrough', onCanPlay);
+          if (instanceId !== audioInstanceRef.current) return;
+          bg.play().then(() => {
+            if (instanceId !== audioInstanceRef.current) return;
+            setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
+          }).catch(() => {
+            if (instanceId !== audioInstanceRef.current) return;
+            setLoadingStream(false); setLoadingTrack(null); setStreamError(true);
+          });
+        });
       });
     };
     if (cachedUrl) {

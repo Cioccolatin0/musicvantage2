@@ -276,15 +276,56 @@ app.get('/api/stream/:id', async (req, res) => {
 });
 
 function proxyStream(upstream, req, res) {
-  const status = upstream.statusCode === 206 ? 206 : 200;
+  const contentLength = upstream.headers['content-length'];
+  const contentType = upstream.headers['content-type'] || 'audio/mpeg';
+  const clientSentRange = !!req.headers.range;
+
+  // If upstream returned 206, pass it through directly
+  if (upstream.statusCode === 206) {
+    const resHeaders = {
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=86400',
+    };
+    if (contentLength) resHeaders['Content-Length'] = contentLength;
+    if (upstream.headers['content-range']) resHeaders['Content-Range'] = upstream.headers['content-range'];
+    res.writeHead(206, resHeaders);
+    upstream.pipe(res);
+    upstream.on('error', () => { try { res.end(); } catch {} });
+    return;
+  }
+
+  // Upstream returned 200. If the client sent a Range header (Safari does this)
+  // and we have Content-Length, synthesize a 206 response so Safari is happy
+  if (clientSentRange && contentLength) {
+    const totalSize = parseInt(contentLength, 10);
+    const rangeHeader = req.headers.range;
+    const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
+    if (match && totalSize > 0) {
+      const start = parseInt(match[1], 10);
+      const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+      const resHeaders = {
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+        'Content-Length': String(end - start + 1),
+        'Cache-Control': 'public, max-age=86400',
+      };
+      res.writeHead(206, resHeaders);
+      upstream.pipe(res);
+      upstream.on('error', () => { try { res.end(); } catch {} });
+      return;
+    }
+  }
+
+  // Default: pass through as 200
   const resHeaders = {
-    'Content-Type': upstream.headers['content-type'] || 'audio/mpeg',
-    'Accept-Ranges': 'bytes',
+    'Content-Type': contentType,
+    'Accept-Ranges': contentLength ? 'bytes' : 'none',
     'Cache-Control': 'public, max-age=86400',
   };
-  if (upstream.headers['content-length']) resHeaders['Content-Length'] = upstream.headers['content-length'];
-  if (upstream.headers['content-range']) resHeaders['Content-Range'] = upstream.headers['content-range'];
-  res.writeHead(status, resHeaders);
+  if (contentLength) resHeaders['Content-Length'] = contentLength;
+  res.writeHead(200, resHeaders);
   upstream.pipe(res);
   upstream.on('error', () => { try { res.end(); } catch {} });
 }
