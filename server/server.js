@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics, getArtistInfo, getRelatedTracks } = require('./ytmusic');
+const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics, getStreamUrl: ytMusicStreamUrl, getArtistInfo, getRelatedTracks } = require('./ytmusic');
 const ytdlp = require('./ytdlp');
 const auth = require('./auth');
 const social = require('./social');
@@ -265,7 +265,11 @@ app.get('/api/lyrics/:id', async (req, res) => {
 app.get('/api/stream/:id', async (req, res) => {
   try {
     req.setTimeout(120000);
-    const url = await ytdlp.getStreamUrl(req.params.id);
+    let url = null;
+    try { url = await ytMusicStreamUrl(req.params.id); } catch {}
+    if (!url) {
+      try { url = await ytdlp.getStreamUrl(req.params.id); } catch {}
+    }
     if (!url) return res.status(404).json({ error: 'Stream not found' });
 
     const isHttps = url.startsWith('https');
@@ -306,7 +310,11 @@ function proxyStream(upstream, req, res) {
 
 app.get('/api/stream/url/:id', async (req, res) => {
   try {
-    const url = await ytdlp.getStreamUrl(req.params.id);
+    let url = null;
+    try { url = await ytMusicStreamUrl(req.params.id); } catch {}
+    if (!url) {
+      try { url = await ytdlp.getStreamUrl(req.params.id); } catch {}
+    }
     if (url) res.json({ url });
     else res.status(404).json({ error: 'Stream not found' });
   } catch (err) { res.status(500).json({ error: err.message }); }

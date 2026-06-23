@@ -3,6 +3,19 @@ const fs = require('fs');
 let innertube = null;
 let initPromise = null;
 
+const streamCache = {};
+const STREAM_CACHE_TTL = 30 * 60 * 1000;
+
+function ytmCacheGet(key) {
+  const e = streamCache[key];
+  if (e && Date.now() - e.ts < STREAM_CACHE_TTL) return e.data;
+  delete streamCache[key];
+  return null;
+}
+function ytmCacheSet(key, data) {
+  streamCache[key] = { ts: Date.now(), data };
+}
+
 async function init() {
   const { Innertube } = await import('youtubei.js');
   const opts = { lang: 'it' };
@@ -270,6 +283,32 @@ async function getLyrics(videoId) {
   return null;
 }
 
+async function getStreamUrl(videoId) {
+  const cacheKey = `stream_${videoId}`;
+  const cached = ytmCacheGet(cacheKey);
+  if (cached) return cached;
+  try {
+    const yt = await getInnertube();
+    const info = await yt.getBasicInfo(videoId);
+    const sd = info.streaming_data;
+    if (!sd) return null;
+    const formats = [...(sd.adaptive_formats || []), ...(sd.formats || [])];
+    const audio = formats.find(f => f.mime_type && f.mime_type.startsWith('audio/'));
+    if (audio && audio.url) {
+      ytmCacheSet(cacheKey, audio.url);
+      return audio.url;
+    }
+    if (audio && audio.decipher) {
+      const deciphered = audio.decipher(yt.session.player);
+      if (deciphered) {
+        ytmCacheSet(cacheKey, deciphered);
+        return deciphered;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
 async function getArtistInfo(artistId) {
   const yt = await getInnertube();
   try {
@@ -323,4 +362,4 @@ async function getArtistInfo(artistId) {
   } catch { return null; }
 }
 
-module.exports = { search, getVideoInfo, getLyrics, getInnertube, getArtistInfo, getRelatedTracks };
+module.exports = { search, getVideoInfo, getLyrics, getStreamUrl, getInnertube, getArtistInfo, getRelatedTracks };
