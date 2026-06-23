@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket, getStreamUrl, downloadAudioBlob } from './api';
+import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket, getStreamUrl, getStreamUrlSync, downloadAudioBlob } from './api';
 import { formatDuration } from './utils';
 import { getCachedSearch, setCachedSearch, getRecentTracks, addRecentTrack, getDownloads, addDownload, removeDownload, isDownloaded, saveAudioBlob, getAudioUrl } from './cache';
 
@@ -301,13 +301,11 @@ function App() {
     if (cachedUrl) {
       startAudio(cachedUrl);
     } else {
-      getStreamUrl(track.id).then(url => {
-        if (pendingTrackRef.current !== track.id) return;
-        if (url) {
-          streamUrlCache.current.set(track.id, url);
-          startAudio(url);
-        } else { fallbackToYoutube(); }
-      }).catch(() => { if (pendingTrackRef.current === track.id) fallbackToYoutube(); });
+      try {
+        const url = getStreamUrlSync(track.id);
+        streamUrlCache.current.set(track.id, url);
+        startAudio(url);
+      } catch { fallbackToYoutube(); }
     }
   }, [volume, stopCurrentAudio, isIOS]);
 
@@ -348,13 +346,11 @@ function App() {
     if (cachedUrl) {
       playBg(cachedUrl);
     } else {
-      getStreamUrl(currentTrack.id).then(url => {
-        if (pendingTrackRef.current !== currentTrack.id) return;
-        if (url) {
-          streamUrlCache.current.set(currentTrack.id, url);
-          playBg(url);
-        } else { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-      }).catch(() => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); });
+      try {
+        const url = getStreamUrlSync(currentTrack.id);
+        streamUrlCache.current.set(currentTrack.id, url);
+        playBg(url);
+      } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
     }
   }, [currentTrack, volume, stopCurrentAudio, isIOS]);
 

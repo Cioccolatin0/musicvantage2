@@ -36,6 +36,10 @@ export async function getStreamUrl(id) {
   const keyParam = apiKey ? `?key=${encodeURIComponent(apiKey)}` : '';
   return `${API}/stream/${id}${keyParam}`;
 }
+export function getStreamUrlSync(id) {
+  const keyParam = apiKey ? `?key=${encodeURIComponent(apiKey)}` : '';
+  return `${API}/stream/${id}${keyParam}`;
+}
 export async function downloadAudioBlob(id) {
   const res = await authFetch(`${API}/stream/${id}`);
   if (!res.ok) return null;
