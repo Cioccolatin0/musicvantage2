@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics, getArtistInfo, getRelatedTracks } = require('./ytmusic');
+const { search: ytMusicSearch, getVideoInfo: ytMusicInfo, getLyrics, getArtistInfo, getRelatedTracks, getStreamUrl: ytMusicStreamUrl } = require('./ytmusic');
 const auth = require('./auth');
 const social = require('./social');
 
@@ -245,6 +245,49 @@ app.delete('/api/playlists/:id', async (req, res) => {
   if (!ok) return res.status(404).json({ error: 'Playlist not found' });
   res.json({ ok: true });
 });
+
+// === STREAM PROXY ===
+app.get('/api/stream/:id', async (req, res) => {
+  try {
+    req.setTimeout(120000);
+    let url = null;
+    try { url = await ytMusicStreamUrl(req.params.id); } catch {}
+    if (!url) return res.status(404).json({ error: 'Stream not found' });
+
+    const isHttps = url.startsWith('https');
+    const httpModule = isHttps ? require('https') : require('http');
+    const headers = { 'User-Agent': 'Mozilla/5.0' };
+    if (req.headers.range) headers['Range'] = req.headers.range;
+
+    httpModule.get(url, { headers }, (upstream) => {
+      if (upstream.statusCode === 302 || upstream.statusCode === 301) {
+        const redirectUrl = upstream.headers.location;
+        if (redirectUrl) {
+          const redirModule = redirectUrl.startsWith('https') ? require('https') : require('http');
+          redirModule.get(redirectUrl, { headers }, (upstream2) => {
+            proxyStream(upstream2, req, res);
+          }).on('error', () => res.status(502).json({ error: 'Upstream error' }));
+          return;
+        }
+      }
+      proxyStream(upstream, req, res);
+    }).on('error', () => res.status(502).json({ error: 'Upstream error' }));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+function proxyStream(upstream, req, res) {
+  const status = upstream.statusCode === 206 ? 206 : 200;
+  const resHeaders = {
+    'Content-Type': upstream.headers['content-type'] || 'audio/mpeg',
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'public, max-age=86400',
+  };
+  if (upstream.headers['content-length']) resHeaders['Content-Length'] = upstream.headers['content-length'];
+  if (upstream.headers['content-range']) resHeaders['Content-Range'] = upstream.headers['content-range'];
+  res.writeHead(status, resHeaders);
+  upstream.pipe(res);
+  upstream.on('error', () => { try { res.end(); } catch {} });
+}
 
 // === ADMIN ROUTES ===
 app.post('/api/admin/login', async (req, res) => {
