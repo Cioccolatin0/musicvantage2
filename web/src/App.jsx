@@ -70,6 +70,7 @@ function App() {
   const searchTimerRef = useRef(null);
   const bgAudioRef = useRef(null);
   const bgModeRef = useRef(false);
+  const streamUrlCache = useRef(new Map());
 
   useEffect(() => { userRef.current = user; }, [user]);
 
@@ -143,6 +144,30 @@ function App() {
     return null;
   }, [queue, currentTrack, shuffle, repeat, getShuffledIndex]);
 
+  // Pre-fetch stream URLs so we can start <audio> during user gesture
+  const prefetchStreamUrl = useCallback((trackId) => {
+    if (streamUrlCache.current.has(trackId)) return;
+    getStreamUrl(trackId).then(url => {
+      if (url) streamUrlCache.current.set(trackId, url);
+    }).catch(() => {});
+  }, []);
+
+  // Pre-fetch top 5 tracks when results change
+  useEffect(() => {
+    if (!results) return;
+    const tracks = results.tracks || [];
+    tracks.slice(0, 5).forEach(t => prefetchStreamUrl(t.id));
+  }, [results]);
+
+  // Pre-fetch next tracks in queue
+  useEffect(() => {
+    if (!currentTrack || !queue.length) return;
+    const idx = queue.findIndex(t => t.id === currentTrack.id);
+    if (idx >= 0) {
+      queue.slice(idx + 1, idx + 4).forEach(t => prefetchStreamUrl(t.id));
+    }
+  }, [currentTrack?.id, queue]);
+
   const playTrack = useCallback((track, trackList) => {
     const p = ytPlayerRef.current;
     if (p && currentTrack?.id === track.id) {
@@ -176,25 +201,23 @@ function App() {
     addRecentTrack(track);
     setRecentTracks(getRecentTracks());
 
-    // Start background audio element MUTED during user gesture (iOS requires this)
-    // Once playing, iOS keeps the audio session alive for background playback
-    try {
-      if (bgAudioRef.current) { bgAudioRef.current.pause(); bgAudioRef.current.src = ''; }
-      const bg = new Audio();
-      bg.preload = 'auto';
-      bg.muted = true;
-      bg.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-      bg.play().then(() => {
-        bgAudioRef.current = bg;
-        // Now fetch real stream URL and swap source (no new gesture needed while playing)
-        getStreamUrl(track.id).then(url => {
-          if (url && bgAudioRef.current === bg) {
-            bg.src = url;
-            bg.load();
-          }
-        }).catch(() => {});
+    // iOS background audio: use cached URL to call play() during user gesture
+    const prevBg = bgAudioRef.current;
+    if (prevBg) { try { prevBg.pause(); } catch {} bgAudioRef.current = null; }
+    const cachedUrl = streamUrlCache.current.get(track.id);
+    if (cachedUrl) {
+      try {
+        const bg = new Audio(cachedUrl);
+        bg.preload = 'auto';
+        bg.muted = true;
+        bg.play().then(() => { bgAudioRef.current = bg; }).catch(() => {});
+      } catch {}
+    } else {
+      // Fallback: fetch and cache for next time
+      getStreamUrl(track.id).then(url => {
+        if (url) streamUrlCache.current.set(track.id, url);
       }).catch(() => {});
-    } catch {}
+    }
   }, [currentTrack?.id]);
 
   const retryStream = useCallback(() => {
@@ -301,9 +324,9 @@ function App() {
     const onVisibility = () => {
       const bg = bgAudioRef.current;
       const p = ytPlayerRef.current;
-      if (!bg || !bg.src || bg.src.startsWith('data:')) return;
+      if (!bg || !bg.src || bg.paused) return;
 
-      if (document.hidden && playing) {
+      if (document.hidden) {
         // Going to background: pause YouTube, unmute bg audio
         const pos = p?.getCurrentTime?.() || 0;
         try { p?.pauseVideo?.(); } catch {}
@@ -311,7 +334,7 @@ function App() {
         bg.muted = false;
         bg.volume = volume;
         bg.play().then(() => { bgModeRef.current = true; }).catch(() => {});
-      } else if (!document.hidden && bgModeRef.current) {
+      } else if (bgModeRef.current) {
         // Coming back to foreground: pause bg audio, resume YouTube
         const pos = bg.currentTime || 0;
         bg.pause();
@@ -329,7 +352,7 @@ function App() {
       const bg = bgAudioRef.current;
       if (bg) { bg.pause(); bg.src = ''; }
     };
-  }, [playing, volume]);
+  }, [volume]);
 
   // MediaSession: lock screen / notification center controls
   useEffect(() => {
