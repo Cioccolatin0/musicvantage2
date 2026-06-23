@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket, getStreamUrl, downloadAudioBlob } from './api';
+import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket } from './api';
 import { formatDuration } from './utils';
-import { getCachedSearch, setCachedSearch, getRecentTracks, addRecentTrack, getDownloads, addDownload, removeDownload, isDownloaded, saveAudioBlob, getAudioUrl } from './cache';
+import { getCachedSearch, setCachedSearch, getRecentTracks, addRecentTrack, getDownloads, removeDownload, isDownloaded } from './cache';
 
 function getFavorites() { try { return JSON.parse(localStorage.getItem('sv_favorites') || '[]'); } catch { return []; } }
 function saveFavorites(favs) { try { localStorage.setItem('sv_favorites', JSON.stringify(favs)); } catch {} }
@@ -57,7 +57,6 @@ function App() {
   const [artistLoading, setArtistLoading] = useState(false);
   const [recentTracks, setRecentTracks] = useState(() => getRecentTracks());
   const [downloads, setDownloads] = useState(() => getDownloads());
-  const [downloadingIds, setDownloadingIds] = useState(new Set());
   const [favorites, setFavorites] = useState(() => getFavorites());
   const [recommended, setRecommended] = useState([]);
 
@@ -69,11 +68,7 @@ function App() {
   const userRef = useRef(null);
   const favoritesRef = useRef(favorites);
   const searchTimerRef = useRef(null);
-  const bgAudioRef = useRef(null);
-  const streamUrlCache = useRef(new Map());
-  const audioBlobCache = useRef(new Map());
   const pendingTrackRef = useRef(null);
-  const ytFallbackRef = useRef(false);
 
   useEffect(() => { userRef.current = user; }, [user]);
   useEffect(() => { favoritesRef.current = favorites; }, [favorites]);
@@ -148,74 +143,8 @@ function App() {
     return null;
   }, [queue, currentTrack, shuffle, repeat, getShuffledIndex]);
 
-  // Pre-fetch stream URLs AND audio data for instant playback on iOS
-  const prefetchStreamUrl = useCallback((trackId) => {
-    if (streamUrlCache.current.has(trackId)) {
-      if (!isIOS && !audioBlobCache.current.has(trackId)) {
-        const url = streamUrlCache.current.get(trackId);
-        fetch(url).then(r => r.ok ? r.blob() : null).then(blob => {
-          if (blob && !audioBlobCache.current.has(trackId)) {
-            audioBlobCache.current.set(trackId, URL.createObjectURL(blob));
-          }
-        }).catch(() => {});
-      }
-      return;
-    }
-    getStreamUrl(trackId).then(url => {
-      if (url) {
-        streamUrlCache.current.set(trackId, url);
-        if (!isIOS) {
-          fetch(url).then(r => r.ok ? r.blob() : null).then(blob => {
-            if (blob && !audioBlobCache.current.has(trackId)) {
-              audioBlobCache.current.set(trackId, URL.createObjectURL(blob));
-            }
-          }).catch(() => {});
-        }
-      }
-    }).catch(() => {});
-  }, [isIOS]);
-
-  // Pre-fetch top 3 tracks when results change
-  useEffect(() => {
-    if (!results) return;
-    const tracks = results.tracks || [];
-    tracks.slice(0, 3).forEach(t => prefetchStreamUrl(t.id));
-  }, [results]);
-
-  // Pre-fetch next tracks in queue
-  useEffect(() => {
-    if (!currentTrack || !queue.length) return;
-    const idx = queue.findIndex(t => t.id === currentTrack.id);
-    if (idx >= 0) {
-      queue.slice(idx + 1, idx + 4).forEach(t => prefetchStreamUrl(t.id));
-    }
-  }, [currentTrack?.id, queue]);
-
-  const audioInstanceRef = useRef(0);
-
-  const stopCurrentAudio = useCallback(() => {
-    const prevBg = bgAudioRef.current;
-    if (prevBg) {
-      try {
-        prevBg.onended = null;
-        prevBg.onerror = null;
-        prevBg.onplay = null;
-        prevBg.oncanplay = null;
-        prevBg.pause();
-        prevBg.src = '';
-        prevBg.load();
-      } catch {}
-    }
-    bgAudioRef.current = null;
-  }, []);
-
-  const isIOSRef = useRef(typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
-  const isIOS = isIOSRef.current;
-
   const playTrack = useCallback((track, trackList) => {
-    const instanceId = ++audioInstanceRef.current;
     pendingTrackRef.current = track.id;
-    ytFallbackRef.current = false;
     if (trackList) setQueue(trackList);
     setCurrentTrack(track); setLoadingTrack(track.id); setPlaying(false);
     setLoadingStream(true); setStreamError(false); setCurrentTime(0); setDuration(0);
@@ -223,140 +152,40 @@ function App() {
     addRecentTrack(track);
     setRecentTracks(getRecentTracks());
 
-    stopCurrentAudio();
-
-    const fallbackToYoutube = (trackId) => {
-      if (instanceId !== audioInstanceRef.current) return;
-      if (ytFallbackRef.current) return;
-      ytFallbackRef.current = true;
-      bgAudioRef.current = null;
-      const p = ytPlayerRef.current;
-      const tid = trackId || track.id;
-      const startPlayer = (player) => {
-        try { player.loadVideoById(tid); player.playVideo(); } catch {}
-      };
-      if (p) {
-        startPlayer(p);
-      } else {
-        try {
-          ytPlayerRef.current = new YT.Player('yt-player', {
-            videoId: tid, height: '1', width: '1',
-            playerVars: { modestbranding: 1, rel: 0, controls: 0, playsinline: 1, fs: 0, disablekb: 1 },
-            events: {
-              onReady: (e) => { try { e.target.playVideo(); } catch {} },
-              onStateChange: (e) => {
-                if (instanceId !== audioInstanceRef.current) return;
-                if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
-                else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
-                else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
-                else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
-              },
-              onError: () => { if (instanceId !== audioInstanceRef.current) return; setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-            }
-          });
-        } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-      }
+    const loadVideo = (player) => {
+      try { player.loadVideoById(track.id); player.playVideo(); } catch {}
     };
-
-    const startAudio = (url) => {
-      if (pendingTrackRef.current !== track.id) return;
-      const useBlob = !isIOS && audioBlobCache.current.has(track.id);
-      const blobUrl = useBlob ? audioBlobCache.current.get(track.id) : null;
-      const src = blobUrl || url;
-      try {
-        const bg = new Audio();
-        bg.preload = 'auto';
-        bg.src = src;
-        bg.volume = volume;
-        bg.onended = () => {
-          if (instanceId !== audioInstanceRef.current) return;
-          if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
-          else { playNextRef.current(); }
-        };
-        bg.onerror = () => {
-          if (instanceId !== audioInstanceRef.current) return;
-          fallbackToYoutube();
-        };
-        bgAudioRef.current = bg;
-
-        const playPromise = bg.play();
-        if (playPromise) {
-          playPromise.then(() => {
-            if (instanceId !== audioInstanceRef.current) return;
-            setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
-          }).catch(() => {
-            if (instanceId !== audioInstanceRef.current) return;
-            fallbackToYoutube();
-          });
-        }
-
-        setTimeout(() => {
-          if (instanceId !== audioInstanceRef.current) return;
-          if (bg.paused && !ytFallbackRef.current) fallbackToYoutube();
-        }, blobUrl ? 10000 : 5000);
-      } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-    };
-
-    const cachedUrl = streamUrlCache.current.get(track.id);
-    if (cachedUrl) {
-      startAudio(cachedUrl);
+    const p = ytPlayerRef.current;
+    if (p) {
+      loadVideo(p);
     } else {
-      getStreamUrl(track.id).then(url => {
-        if (pendingTrackRef.current !== track.id) return;
-        if (url) {
-          streamUrlCache.current.set(track.id, url);
-          startAudio(url);
-        } else { fallbackToYoutube(); }
-      }).catch(() => { if (pendingTrackRef.current === track.id) fallbackToYoutube(); });
+      try {
+        ytPlayerRef.current = new YT.Player('yt-player', {
+          videoId: track.id, height: '1', width: '1',
+          playerVars: { modestbranding: 1, rel: 0, controls: 0, playsinline: 1, fs: 0, disablekb: 1 },
+          events: {
+            onReady: (e) => { try { e.target.playVideo(); } catch {} },
+            onStateChange: (e) => {
+              if (pendingTrackRef.current !== track.id) return;
+              if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
+              else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
+              else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
+              else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
+            },
+            onError: () => { if (pendingTrackRef.current !== track.id) return; setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+          }
+        });
+      } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
     }
-  }, [volume, stopCurrentAudio, isIOS]);
+  }, []);
 
   const retryStream = useCallback(() => {
     if (!currentTrack) return;
-    const instanceId = ++audioInstanceRef.current;
-    setStreamError(false); setLoadingStream(true);
-    ytFallbackRef.current = false;
     pendingTrackRef.current = currentTrack.id;
-    stopCurrentAudio();
-    const cachedUrl = streamUrlCache.current.get(currentTrack.id);
-    const useBlob = !isIOS && audioBlobCache.current.has(currentTrack.id);
-    const blobUrl = useBlob ? audioBlobCache.current.get(currentTrack.id) : null;
-    const playBg = (url) => {
-      if (pendingTrackRef.current !== currentTrack.id) return;
-      const bg = new Audio();
-      bg.preload = 'auto'; bg.src = blobUrl || url; bg.volume = volume;
-      bgAudioRef.current = bg;
-      bg.onended = () => {
-        if (instanceId !== audioInstanceRef.current) return;
-        playNextRef.current();
-      };
-      bg.onerror = () => {
-        if (instanceId !== audioInstanceRef.current) return;
-        bgAudioRef.current = null;
-        ytFallbackRef.current = true;
-        const p = ytPlayerRef.current;
-        if (p) { try { p.loadVideoById(currentTrack.id); p.playVideo(); } catch {} }
-      };
-      bg.play().then(() => {
-        if (instanceId !== audioInstanceRef.current) return;
-        setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
-      }).catch(() => {
-        if (instanceId !== audioInstanceRef.current) return;
-        setLoadingStream(false); setLoadingTrack(null); setStreamError(true);
-      });
-    };
-    if (cachedUrl) {
-      playBg(cachedUrl);
-    } else {
-      getStreamUrl(currentTrack.id).then(url => {
-        if (pendingTrackRef.current !== currentTrack.id) return;
-        if (url) {
-          streamUrlCache.current.set(currentTrack.id, url);
-          playBg(url);
-        } else { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-      }).catch(() => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); });
-    }
-  }, [currentTrack, volume, stopCurrentAudio, isIOS]);
+    setStreamError(false); setLoadingStream(true);
+    const p = ytPlayerRef.current;
+    if (p) { try { p.loadVideoById(currentTrack.id); p.playVideo(); } catch {} }
+  }, [currentTrack]);
 
   useEffect(() => {
     if (window.YT && window.YT.Player) { setYoutubeReady(true); return; }
@@ -377,7 +206,6 @@ function App() {
         events: {
             onReady: () => {},
             onStateChange: (e) => {
-              if (bgAudioRef.current && bgAudioRef.current.src && !bgAudioRef.current.paused) return;
               if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
               else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
               else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
@@ -403,19 +231,8 @@ function App() {
     if (!playing) return;
     const interval = setInterval(() => {
       try {
-        if (ytFallbackRef.current) {
-          const p = ytPlayerRef.current;
-          if (p && p.getCurrentTime) { setCurrentTime(p.getCurrentTime() || 0); setDuration(p.getDuration() || 0); }
-          return;
-        }
-        const bg = bgAudioRef.current;
-        if (bg && bg.src && !bg.paused) {
-          setCurrentTime(bg.currentTime || 0);
-          setDuration(bg.duration || 0);
-        } else {
-          const p = ytPlayerRef.current;
-          if (p && p.getCurrentTime) { setCurrentTime(p.getCurrentTime() || 0); setDuration(p.getDuration() || 0); }
-        }
+        const p = ytPlayerRef.current;
+        if (p && p.getCurrentTime) { setCurrentTime(p.getCurrentTime() || 0); setDuration(p.getDuration() || 0); }
       } catch {}
     }, 250);
     return () => clearInterval(interval);
@@ -428,20 +245,9 @@ function App() {
   }, [currentTrack?.id]);
 
   const togglePlay = () => {
-    if (ytFallbackRef.current) {
-      const p = ytPlayerRef.current;
-      if (!p || loadingStream) return;
-      try { if (playing) p.pauseVideo(); else p.playVideo(); } catch {}
-      return;
-    }
-    const bg = bgAudioRef.current;
-    if (bg && bg.src) {
-      try { if (playing) bg.pause(); else bg.play(); } catch {}
-    } else {
-      const p = ytPlayerRef.current;
-      if (!p || loadingStream) return;
-      try { if (playing) p.pauseVideo(); else p.playVideo(); } catch {}
-    }
+    const p = ytPlayerRef.current;
+    if (!p || loadingStream) return;
+    try { if (playing) p.pauseVideo(); else p.playVideo(); } catch {}
   };
 
   const playNext = useCallback(() => {
@@ -452,18 +258,8 @@ function App() {
   const playPrev = () => {
     if (!queue.length || !currentTrack) return;
     if (currentTime > 3) {
-      const bg = bgAudioRef.current;
-      if (bg && bg.src) {
-        try { bg.currentTime = 0; bg.play().catch(() => {}); } catch {}
-        setCurrentTime(0);
-        return;
-      }
       const p = ytPlayerRef.current;
-      if (p && p.seekTo) {
-        try { p.seekTo(0, true); } catch {}
-        setCurrentTime(0);
-        return;
-      }
+      if (p && p.seekTo) { try { p.seekTo(0, true); } catch {} setCurrentTime(0); return; }
     }
     const idx = queue.findIndex(t => t.id === currentTrack.id);
     if (idx > 0) playTrack(queue[idx - 1], queue);
@@ -474,27 +270,14 @@ function App() {
     if (!bar) return;
     const rect = bar.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
-    const dur = (ytFallbackRef.current ? ytPlayerRef.current?.getDuration?.() : (bgAudioRef.current?.duration || ytPlayerRef.current?.getDuration?.())) || 0;
-    const seekTo = pct * dur;
-    try {
-      if (ytFallbackRef.current) {
-        ytPlayerRef.current?.seekTo(seekTo, true);
-      } else if (bgAudioRef.current && bgAudioRef.current.src) {
-        bgAudioRef.current.currentTime = seekTo;
-      } else {
-        const p = ytPlayerRef.current;
-        if (p) p.seekTo(seekTo, true);
-      }
-    } catch {}
+    const dur = ytPlayerRef.current?.getDuration?.() || 0;
+    try { ytPlayerRef.current?.seekTo(pct * dur, true); } catch {}
   };
 
   useEffect(() => { repeatRef.current = repeat; }, [repeat]);
   useEffect(() => { playNextRef.current = playNext; }, [playNext]);
   useEffect(() => {
-    try {
-      if (bgAudioRef.current) bgAudioRef.current.volume = volume;
-      if (ytPlayerRef.current?.setVolume) ytPlayerRef.current.setVolume(volume * 100);
-    } catch {}
+    try { if (ytPlayerRef.current?.setVolume) ytPlayerRef.current.setVolume(volume * 100); } catch {}
   }, [volume]);
 
   const togglePlayRef = useRef(togglePlay);
@@ -549,13 +332,9 @@ function App() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopCurrentAudio();
-      try {
-        const p = ytPlayerRef.current;
-        if (p && p.destroy) p.destroy();
-      } catch {}
+      try { ytPlayerRef.current?.destroy?.(); } catch {}
     };
-  }, [stopCurrentAudio]);
+  }, []);
 
   // MediaSession: lock screen / notification center controls
   useEffect(() => {
@@ -589,21 +368,10 @@ function App() {
     setPlaylists(pl => pl.map((p, i) => i === playlistIdx ? { ...p, tracks: [...p.tracks, currentTrack] } : p));
     setShowPlaylists(false);
   };
-  const toggleDownload = async (track) => {
+  const toggleDownload = (track) => {
     if (isDownloaded(track.id)) {
       removeDownload(track.id);
       setDownloads(getDownloads());
-    } else {
-      setDownloadingIds(prev => new Set(prev).add(track.id));
-      try {
-        const blob = await downloadAudioBlob(track.id);
-        if (blob) {
-          await saveAudioBlob(track.id, blob);
-          addDownload(track);
-          setDownloads(getDownloads());
-        }
-      } catch {}
-      setDownloadingIds(prev => { const next = new Set(prev); next.delete(track.id); return next; });
     }
   };
   const toggleFavorite = (track) => {
@@ -884,7 +652,6 @@ function App() {
                 <div className="track-list">
                   {downloads.map((t, i) => {
                     const isActive = currentTrack?.id === t.id;
-                    const isDownloading = downloadingIds.has(t.id);
                     return (
                       <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, downloads)}>
                         <img src={t.thumbnail} alt={t.title} loading="lazy" />
