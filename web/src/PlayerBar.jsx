@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { IconPrev, IconPlay, IconPause, IconNext, IconShuffle, IconRepeat, IconRepeatOne, IconLyrics, IconQueue, IconAdd, IconHeart, IconHeartFilled, IconVolume, IconList, IconMusicVideo, IconMusicNote, IconRefresh, IconClose } from './Icons';
 import { formatDuration } from './utils';
 
@@ -10,12 +10,60 @@ export default function PlayerBar({
 }) {
   const progressRef = useRef(null);
   const volumeRef = useRef(null);
+  const [isDraggingProgress, setIsDraggingProgress] = useState(false);
+  const [isDraggingVolume, setIsDraggingVolume] = useState(false);
+
+  const getBarPercentage = (e, ref) => {
+    const rect = ref.current.getBoundingClientRect();
+    return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  };
+
+  const handleProgressMouseDown = (e) => {
+    setIsDraggingProgress(true);
+    const pct = getBarPercentage(e, progressRef);
+    handleProgressClick(e, pct);
+  };
+
+  const handleVolumeMouseDown = (e) => {
+    setIsDraggingVolume(true);
+    const pct = getBarPercentage(e, volumeRef);
+    setVolume(pct);
+  };
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isDraggingProgress && progressRef.current) {
+        const pct = getBarPercentage(e, progressRef);
+        handleProgressClick(e, pct);
+      }
+      if (isDraggingVolume && volumeRef.current) {
+        const pct = getBarPercentage(e, volumeRef);
+        setVolume(pct);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingProgress(false);
+      setIsDraggingVolume(false);
+    };
+
+    if (isDraggingProgress || isDraggingVolume) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('touchmove', handleMouseMove, { passive: false });
+      window.addEventListener('touchend', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleMouseMove);
+      window.removeEventListener('touchend', handleMouseUp);
+    };
+  }, [isDraggingProgress, isDraggingVolume, handleProgressClick, setVolume]);
 
   const handleVolumeClick = (e) => {
-    const bar = volumeRef.current;
-    if (!bar) return;
-    const rect = bar.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pct = getBarPercentage(e, volumeRef);
     setVolume(pct);
   };
 
@@ -58,7 +106,7 @@ export default function PlayerBar({
           </div>
           <div className="player-progress-row">
             <span className="time">{formatDuration(currentTime)}</span>
-            <div className="progress-bar" ref={progressRef} onClick={handleProgressClick}>
+            <div className="progress-bar" ref={progressRef} onMouseDown={handleProgressMouseDown} onTouchStart={handleProgressMouseDown}>
               <div className="progress-fill" style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
               <div className="progress-thumb" style={{ left: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
             </div>
@@ -78,7 +126,7 @@ export default function PlayerBar({
           </button>
           <div className="volume-wrap">
             <IconVolume size={16} />
-            <div className="volume-bar" ref={volumeRef} onClick={handleVolumeClick}>
+            <div className="volume-bar" ref={volumeRef} onMouseDown={handleVolumeMouseDown} onTouchStart={handleVolumeMouseDown}>
               <div className="volume-fill" style={{ width: `${volume * 100}%` }} />
             </div>
           </div>

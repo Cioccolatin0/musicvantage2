@@ -101,7 +101,9 @@ function similarity(a, b) {
 
 async function search(query, type = 'all') {
   const yt = await getInnertube();
-  const results = await yt.music.search(query);
+  // If type is not 'all', use the specific type for YouTube Music search
+  const searchType = type === 'all' ? undefined : type;
+  const results = await yt.music.search(query, { type: searchType });
 
   const allTracks = [];
   const albums = [];
@@ -118,6 +120,11 @@ async function search(query, type = 'all') {
         if (item.type !== 'MusicResponsiveListItem') continue;
 
         const itemType = item.item_type || '';
+
+        // Filter based on the type parameter
+        if (type === 'songs' && itemType !== 'song' && itemType !== 'video') continue;
+        if (type === 'albums' && itemType !== 'album') continue;
+        if (type === 'artists' && itemType !== 'artist') continue;
 
         if (itemType === 'song' || itemType === 'video') {
           if (seenTracks.has(item.id)) continue;

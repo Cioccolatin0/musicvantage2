@@ -520,11 +520,14 @@ function App() {
     if (idx > 0) playTrack(queue[idx - 1], queue);
   };
 
-  const handleProgressClick = (e) => {
-    const bar = progressRef.current;
-    if (!bar) return;
-    const rect = bar.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
+  const handleProgressClick = useCallback((e, pct) => {
+    // If pct is not provided, calculate it from the event
+    if (pct === undefined) {
+      const bar = progressRef.current;
+      if (!bar) return;
+      const rect = bar.getBoundingClientRect();
+      pct = (e.clientX - rect.left) / rect.width;
+    }
     const dur = (ytFallbackRef.current ? ytPlayerRef.current?.getDuration?.() : (bgAudioRef.current?.duration || ytPlayerRef.current?.getDuration?.())) || 0;
     const seekTo = pct * dur;
     try {
@@ -537,7 +540,7 @@ function App() {
         if (p) p.seekTo(seekTo, true);
       }
     } catch {}
-  };
+  }, []);
 
   useEffect(() => { repeatRef.current = repeat; }, [repeat]);
   useEffect(() => { playNextRef.current = playNext; }, [playNext]);
