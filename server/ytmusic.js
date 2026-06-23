@@ -289,7 +289,7 @@ async function getStreamUrl(videoId) {
   if (cached) return cached;
   try {
     const yt = await getInnertube();
-    const info = await yt.getBasicInfo(videoId);
+    const info = await yt.getInfo(videoId);
     const sd = info.streaming_data;
     if (!sd) return null;
     const formats = [...(sd.adaptive_formats || []), ...(sd.formats || [])];

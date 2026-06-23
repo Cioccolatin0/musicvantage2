@@ -72,7 +72,7 @@ app.get('/api/debug/stream/:id', async (req, res) => {
     try {
       const yt = await getInnertube();
       results.steps.innertube = 'ok';
-      const info = await yt.getBasicInfo(id);
+      const info = await yt.getInfo(id);
       results.steps.basicInfo = 'ok';
       const sd = info.streaming_data;
       results.steps.hasStreamingData = !!sd;
