@@ -299,7 +299,7 @@ function proxyStream(upstream, req, res) {
   const resHeaders = {
     'Content-Type': upstream.headers['content-type'] || 'audio/mpeg',
     'Accept-Ranges': 'bytes',
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'public, max-age=86400',
   };
   if (upstream.headers['content-length']) resHeaders['Content-Length'] = upstream.headers['content-length'];
   if (upstream.headers['content-range']) resHeaders['Content-Range'] = upstream.headers['content-range'];

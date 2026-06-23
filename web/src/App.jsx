@@ -71,6 +71,7 @@ function App() {
   const searchTimerRef = useRef(null);
   const bgAudioRef = useRef(null);
   const streamUrlCache = useRef(new Map());
+  const audioBlobCache = useRef(new Map());
   const pendingTrackRef = useRef(null);
   const ytFallbackRef = useRef(false);
 
@@ -147,11 +148,30 @@ function App() {
     return null;
   }, [queue, currentTrack, shuffle, repeat, getShuffledIndex]);
 
-  // Pre-fetch stream URLs so we can start <audio> during user gesture
+  // Pre-fetch stream URLs AND audio data for instant playback on iOS
   const prefetchStreamUrl = useCallback((trackId) => {
-    if (streamUrlCache.current.has(trackId)) return;
+    if (streamUrlCache.current.has(trackId)) {
+      // URL known, also pre-fetch audio blob if not already done
+      if (!audioBlobCache.current.has(trackId)) {
+        const url = streamUrlCache.current.get(trackId);
+        fetch(url).then(r => r.ok ? r.blob() : null).then(blob => {
+          if (blob && !audioBlobCache.current.has(trackId)) {
+            audioBlobCache.current.set(trackId, URL.createObjectURL(blob));
+          }
+        }).catch(() => {});
+      }
+      return;
+    }
     getStreamUrl(trackId).then(url => {
-      if (url) streamUrlCache.current.set(trackId, url);
+      if (url) {
+        streamUrlCache.current.set(trackId, url);
+        // Pre-fetch audio data as blob for instant playback
+        fetch(url).then(r => r.ok ? r.blob() : null).then(blob => {
+          if (blob && !audioBlobCache.current.has(trackId)) {
+            audioBlobCache.current.set(trackId, URL.createObjectURL(blob));
+          }
+        }).catch(() => {});
+      }
     }).catch(() => {});
   }, []);
 
@@ -218,10 +238,12 @@ function App() {
 
     const startAudio = (url) => {
       if (pendingTrackRef.current !== track.id) return;
+      const blobUrl = audioBlobCache.current.get(track.id);
+      const src = blobUrl || url;
       try {
         const bg = new Audio();
         bg.preload = 'auto';
-        bg.src = url;
+        bg.src = src;
         bg.volume = volume;
         bg.onended = () => {
           if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
@@ -238,7 +260,7 @@ function App() {
         setTimeout(() => {
           if (pendingTrackRef.current !== track.id) return;
           if (bg.paused && !ytFallbackRef.current) fallbackToYoutube();
-        }, 5000);
+        }, blobUrl ? 10000 : 5000);
       } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
     };
 
@@ -262,9 +284,10 @@ function App() {
     ytFallbackRef.current = false;
     pendingTrackRef.current = currentTrack.id;
     const cachedUrl = streamUrlCache.current.get(currentTrack.id);
-    if (cachedUrl) {
+    const blobUrl = audioBlobCache.current.get(currentTrack.id);
+    const playBg = (url) => {
       const bg = new Audio();
-      bg.preload = 'auto'; bg.src = cachedUrl; bg.volume = volume;
+      bg.preload = 'auto'; bg.src = blobUrl || url; bg.volume = volume;
       bgAudioRef.current = bg;
       bg.onended = () => { playNextRef.current(); };
       bg.onerror = () => {
@@ -274,20 +297,14 @@ function App() {
         if (p) { try { p.loadVideoById(currentTrack.id); p.playVideo(); } catch {} }
       };
       bg.play().then(() => { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); }).catch(() => {});
+    };
+    if (cachedUrl) {
+      playBg(cachedUrl);
     } else {
       getStreamUrl(currentTrack.id).then(url => {
         if (url) {
           streamUrlCache.current.set(currentTrack.id, url);
-          const bg = new Audio(); bg.preload = 'auto'; bg.src = url; bg.volume = volume;
-          bgAudioRef.current = bg;
-          bg.onended = () => { playNextRef.current(); };
-          bg.onerror = () => {
-            bgAudioRef.current = null;
-            ytFallbackRef.current = true;
-            const p = ytPlayerRef.current;
-            if (p) { try { p.loadVideoById(currentTrack.id); p.playVideo(); } catch {} }
-          };
-          bg.play().then(() => { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); }).catch(() => {});
+          playBg(url);
         } else { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
       }).catch(() => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); });
     }
