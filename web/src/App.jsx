@@ -175,11 +175,11 @@ function App() {
     }).catch(() => {});
   }, []);
 
-  // Pre-fetch top 5 tracks when results change
+  // Pre-fetch top 3 tracks when results change
   useEffect(() => {
     if (!results) return;
     const tracks = results.tracks || [];
-    tracks.slice(0, 5).forEach(t => prefetchStreamUrl(t.id));
+    tracks.slice(0, 3).forEach(t => prefetchStreamUrl(t.id));
   }, [results]);
 
   // Pre-fetch next tracks in queue
