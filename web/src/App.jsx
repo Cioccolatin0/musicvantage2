@@ -210,7 +210,14 @@ function App() {
         prevBg.pause();
         prevBg.src = '';
         prevBg.load();
+        if (prevBg.parentNode) {
+          prevBg.parentNode.removeChild(prevBg);
+        }
       } catch {}
+    }
+    const existing = document.getElementById('soundusic-bg-audio');
+    if (existing && existing.parentNode) {
+      try { existing.parentNode.removeChild(existing); } catch {}
     }
     bgAudioRef.current = null;
   }, []);
@@ -268,6 +275,7 @@ function App() {
       const src = blobUrl || url;
       try {
         const bg = new Audio();
+        bg.id = 'soundusic-bg-audio';
         bg.preload = 'auto';
         bg.src = src;
         bg.volume = volume;
@@ -280,6 +288,9 @@ function App() {
           if (instanceId !== audioInstanceRef.current) return;
           fallbackToYoutube();
         };
+
+        // Append to DOM to prevent iOS Safari/PWA from suspending background playback
+        document.body.appendChild(bg);
         bgAudioRef.current = bg;
 
         const playPromise = bg.play();
@@ -296,7 +307,7 @@ function App() {
         setTimeout(() => {
           if (instanceId !== audioInstanceRef.current) return;
           if (bg.paused && !ytFallbackRef.current) fallbackToYoutube();
-        }, blobUrl ? 10000 : 5000);
+        }, 15000);
       } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
     };
 
@@ -325,7 +336,11 @@ function App() {
     const playBg = (url) => {
       if (pendingTrackRef.current !== currentTrack.id) return;
       const bg = new Audio();
+      bg.id = 'soundusic-bg-audio';
       bg.preload = 'auto'; bg.src = blobUrl || url; bg.volume = volume;
+
+      // Append to DOM to prevent iOS Safari/PWA from suspending background playback
+      document.body.appendChild(bg);
       bgAudioRef.current = bg;
       bg.onended = () => {
         if (instanceId !== audioInstanceRef.current) return;
@@ -564,6 +579,13 @@ function App() {
     navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
     navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
   }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.thumbnail]);
+
+  // Sync MediaSession playback state with React playing state
+  useEffect(() => {
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+    }
+  }, [playing]);
 
   const toggleShuffle = () => setShuffle(s => !s);
   const toggleRepeat = () => setRepeat(r => r === 'off' ? 'all' : r === 'all' ? 'one' : 'off');
