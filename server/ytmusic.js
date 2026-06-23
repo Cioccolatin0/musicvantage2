@@ -293,7 +293,10 @@ async function getStreamUrl(videoId) {
     const sd = info.streaming_data;
     if (!sd) return null;
     const formats = [...(sd.adaptive_formats || []), ...(sd.formats || [])];
-    const audio = formats.find(f => f.mime_type && f.mime_type.startsWith('audio/'));
+    let audio = formats.find(f => f.mime_type && f.mime_type.startsWith('audio/mp4'));
+    if (!audio) {
+      audio = formats.find(f => f.mime_type && f.mime_type.startsWith('audio/'));
+    }
     if (audio && audio.url) {
       ytmCacheSet(cacheKey, audio.url);
       return audio.url;

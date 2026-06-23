@@ -148,13 +148,16 @@ function App() {
     return null;
   }, [queue, currentTrack, shuffle, repeat, getShuffledIndex]);
 
-  const isIOSRef = useRef(typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent));
-  const isIOS = isIOSRef.current;
+  const isSafariOrIOSRef = useRef(
+    typeof navigator !== 'undefined' &&
+    (/iPad|iPhone|iPod/.test(navigator.userAgent) || /^((?!chrome|android).)*safari/i.test(navigator.userAgent))
+  );
+  const isSafariOrIOS = isSafariOrIOSRef.current;
 
   // Pre-fetch stream URLs AND audio data for instant playback on iOS
   const prefetchStreamUrl = useCallback((trackId) => {
     if (streamUrlCache.current.has(trackId)) {
-      if (!isIOS && !audioBlobCache.current.has(trackId)) {
+      if (!isSafariOrIOS && !audioBlobCache.current.has(trackId)) {
         const url = streamUrlCache.current.get(trackId);
         fetch(url).then(r => r.ok ? r.blob() : null).then(blob => {
           if (blob && !audioBlobCache.current.has(trackId)) {
@@ -167,7 +170,7 @@ function App() {
     getStreamUrl(trackId).then(url => {
       if (url) {
         streamUrlCache.current.set(trackId, url);
-        if (!isIOS) {
+        if (!isSafariOrIOS) {
           fetch(url).then(r => r.ok ? r.blob() : null).then(blob => {
             if (blob && !audioBlobCache.current.has(trackId)) {
               audioBlobCache.current.set(trackId, URL.createObjectURL(blob));
@@ -176,7 +179,7 @@ function App() {
         }
       }
     }).catch(() => {});
-  }, [isIOS]);
+  }, [isSafariOrIOS]);
 
   // Pre-fetch top 3 tracks when results change
   useEffect(() => {
@@ -260,7 +263,7 @@ function App() {
 
     const startAudio = (url) => {
       if (pendingTrackRef.current !== track.id) return;
-      const useBlob = !isIOS && audioBlobCache.current.has(track.id);
+      const useBlob = !isSafariOrIOS && audioBlobCache.current.has(track.id);
       const blobUrl = useBlob ? audioBlobCache.current.get(track.id) : null;
       const src = blobUrl || url;
       try {
@@ -307,7 +310,7 @@ function App() {
         startAudio(url);
       } catch { fallbackToYoutube(); }
     }
-  }, [volume, stopCurrentAudio, isIOS]);
+  }, [volume, stopCurrentAudio, isSafariOrIOS]);
 
   const retryStream = useCallback(() => {
     if (!currentTrack) return;
@@ -317,7 +320,7 @@ function App() {
     pendingTrackRef.current = currentTrack.id;
     stopCurrentAudio();
     const cachedUrl = streamUrlCache.current.get(currentTrack.id);
-    const useBlob = !isIOS && audioBlobCache.current.has(currentTrack.id);
+    const useBlob = !isSafariOrIOS && audioBlobCache.current.has(currentTrack.id);
     const blobUrl = useBlob ? audioBlobCache.current.get(currentTrack.id) : null;
     const playBg = (url) => {
       if (pendingTrackRef.current !== currentTrack.id) return;
@@ -352,7 +355,7 @@ function App() {
         playBg(url);
       } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
     }
-  }, [currentTrack, volume, stopCurrentAudio, isIOS]);
+  }, [currentTrack, volume, stopCurrentAudio, isSafariOrIOS]);
 
   useEffect(() => {
     if (window.YT && window.YT.Player) { setYoutubeReady(true); return; }
