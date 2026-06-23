@@ -189,10 +189,10 @@ function App() {
     const prevBg = bgAudioRef.current;
     if (prevBg) { try { prevBg.pause(); } catch {} bgAudioRef.current = null; }
 
-    // Start <audio> element as PRIMARY player (not muted!)
-    // iOS lets native <audio> play in background if started by user gesture + MediaSession
+    // Start <audio> as PRIMARY player — call play() synchronously for iOS gesture context
     const cachedUrl = streamUrlCache.current.get(track.id);
     const playViaYoutube = () => {
+      if (ytFallbackRef.current) return;
       ytFallbackRef.current = true;
       const p = ytPlayerRef.current;
       if (p) {
@@ -229,11 +229,24 @@ function App() {
         };
         bg.oncanplay = () => {
           bgAudioRef.current = bg;
-          bg.play().then(() => {
-            setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
-          }).catch(() => {});
+          if (bg.paused) {
+            bg.play().then(() => {
+              setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
+            }).catch(() => { playViaYoutube(); });
+          }
         };
         bg.onerror = () => { playViaYoutube(); };
+        bgAudioRef.current = bg;
+        // Call play() IMMEDIATELY for iOS user gesture context
+        bg.play().then(() => {
+          setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
+        }).catch(() => {
+          // Play rejected (not loaded yet or not in gesture) — oncanplay will retry
+        });
+        // Fallback timeout: 8s max for audio proxy, then switch to YouTube
+        setTimeout(() => {
+          if (bg.paused && !ytFallbackRef.current) playViaYoutube();
+        }, 8000);
       } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
     };
 
@@ -252,43 +265,34 @@ function App() {
   const retryStream = useCallback(() => {
     if (!currentTrack) return;
     setStreamError(false); setLoadingStream(true);
+    const tryAudio = (url) => {
+      const bg = new Audio(url);
+      bg.preload = 'auto';
+      bg.volume = volume;
+      bg.onended = () => { playNextRef.current(); };
+      bg.oncanplay = () => {
+        ytFallbackRef.current = false;
+        bgAudioRef.current = bg;
+        if (bg.paused) {
+          bg.play().then(() => { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); }).catch(() => {});
+        }
+      };
+      bg.onerror = () => {
+        ytFallbackRef.current = true;
+        const p = ytPlayerRef.current;
+        if (p) { try { p.loadVideoById(currentTrack.id); p.playVideo(); } catch {} }
+      };
+      bgAudioRef.current = bg;
+      bg.play().then(() => { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); }).catch(() => {});
+    };
     const cachedUrl = streamUrlCache.current.get(currentTrack.id);
     if (cachedUrl) {
-      try {
-        const bg = new Audio(cachedUrl);
-        bg.preload = 'auto';
-        bg.volume = volume;
-        bg.onended = () => { playNextRef.current(); };
-        bg.oncanplay = () => {
-          ytFallbackRef.current = false;
-          bgAudioRef.current = bg;
-          bg.play().then(() => { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); }).catch(() => {});
-        };
-        bg.onerror = () => {
-          // fallback to YouTube
-          ytFallbackRef.current = true;
-          const p = ytPlayerRef.current;
-          if (p) { try { p.loadVideoById(currentTrack.id); p.playVideo(); } catch {} }
-        };
-      } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+      tryAudio(cachedUrl);
     } else {
       getStreamUrl(currentTrack.id).then(url => {
         if (url) {
           streamUrlCache.current.set(currentTrack.id, url);
-          const bg = new Audio(url);
-          bg.preload = 'auto';
-          bg.volume = volume;
-          bg.onended = () => { playNextRef.current(); };
-          bg.oncanplay = () => {
-            ytFallbackRef.current = false;
-            bgAudioRef.current = bg;
-            bg.play().then(() => { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); }).catch(() => {});
-          };
-          bg.onerror = () => {
-            ytFallbackRef.current = true;
-            const p = ytPlayerRef.current;
-            if (p) { try { p.loadVideoById(currentTrack.id); p.playVideo(); } catch {} }
-          };
+          tryAudio(url);
         } else { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
       }).catch(() => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); });
     }
