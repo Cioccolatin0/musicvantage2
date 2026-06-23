@@ -175,6 +175,26 @@ function App() {
     setLyrics(null); setLiked(favorites.some(t => t.id === track.id));
     addRecentTrack(track);
     setRecentTracks(getRecentTracks());
+
+    // Start background audio element MUTED during user gesture (iOS requires this)
+    // Once playing, iOS keeps the audio session alive for background playback
+    try {
+      if (bgAudioRef.current) { bgAudioRef.current.pause(); bgAudioRef.current.src = ''; }
+      const bg = new Audio();
+      bg.preload = 'auto';
+      bg.muted = true;
+      bg.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+      bg.play().then(() => {
+        bgAudioRef.current = bg;
+        // Now fetch real stream URL and swap source (no new gesture needed while playing)
+        getStreamUrl(track.id).then(url => {
+          if (url && bgAudioRef.current === bg) {
+            bg.src = url;
+            bg.load();
+          }
+        }).catch(() => {});
+      }).catch(() => {});
+    } catch {}
   }, [currentTrack?.id]);
 
   const retryStream = useCallback(() => {
@@ -276,80 +296,27 @@ function App() {
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  // Background playback: establish audio session on user gesture, switch when hidden
+  // Background playback: unmute audio on background, mute on foreground
   useEffect(() => {
-    const currentRef = currentTrack;
-    if (!currentRef) return;
+    const onVisibility = () => {
+      const bg = bgAudioRef.current;
+      const p = ytPlayerRef.current;
+      if (!bg || !bg.src || bg.src.startsWith('data:')) return;
 
-    const bgAudio = new Audio();
-    bgAudio.preload = 'auto';
-    bgAudioRef.current = bgAudio;
-    let bgReady = false;
-    let silentPlayed = false;
-
-    // On iOS, we need to start playing audio during a user gesture
-    // to establish the audio session for background playback
-    const startSilentAudio = () => {
-      if (silentPlayed) return;
-      try {
-        bgAudio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-        bgAudio.muted = true;
-        bgAudio.play().then(() => {
-          silentPlayed = true;
-          bgAudio.muted = false;
-        }).catch(() => {});
-      } catch {}
-    };
-
-    // Pre-fetch stream URL
-    const prepareBgAudio = async () => {
-      if (bgReady || !currentRef) return;
-      try {
-        const url = await getStreamUrl(currentRef.id);
-        if (url && bgAudioRef.current) {
-          bgAudio.src = url;
-          bgReady = true;
-        }
-      } catch {}
-    };
-
-    if (playing) {
-      startSilentAudio();
-      prepareBgAudio();
-    }
-
-    const onVisibility = async () => {
-      if (document.hidden && currentRef) {
-        const p = ytPlayerRef.current;
+      if (document.hidden && playing) {
+        // Going to background: pause YouTube, unmute bg audio
         const pos = p?.getCurrentTime?.() || 0;
         try { p?.pauseVideo?.(); } catch {}
-        if (bgReady && bgAudio.src && !bgAudio.src.startsWith('data:')) {
-          bgAudio.currentTime = pos;
-          bgAudio.volume = volume;
-          bgAudio.muted = false;
-          bgAudio.play().then(() => {
-            bgModeRef.current = true;
-          }).catch(() => {});
-        } else if (playing) {
-          try {
-            const url = await getStreamUrl(currentRef.id);
-            if (url && document.hidden) {
-              bgAudio.src = url;
-              bgAudio.currentTime = pos;
-              bgAudio.volume = volume;
-              bgAudio.muted = false;
-              bgAudio.play().then(() => {
-                bgModeRef.current = true;
-              }).catch(() => {});
-            }
-          } catch {}
-        }
+        bg.currentTime = pos;
+        bg.muted = false;
+        bg.volume = volume;
+        bg.play().then(() => { bgModeRef.current = true; }).catch(() => {});
       } else if (!document.hidden && bgModeRef.current) {
-        const pos = bgAudio.currentTime || 0;
-        bgAudio.pause();
+        // Coming back to foreground: pause bg audio, resume YouTube
+        const pos = bg.currentTime || 0;
+        bg.pause();
+        bg.muted = true;
         bgModeRef.current = false;
-        bgReady = false;
-        const p = ytPlayerRef.current;
         if (p) {
           try { p.seekTo(pos, true); p.playVideo(); } catch {}
         }
@@ -359,12 +326,10 @@ function App() {
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
-      bgAudio.pause();
-      bgAudio.src = '';
-      bgReady = false;
-      silentPlayed = false;
+      const bg = bgAudioRef.current;
+      if (bg) { bg.pause(); bg.src = ''; }
     };
-  }, [currentTrack?.id, playing, volume]);
+  }, [playing, volume]);
 
   // MediaSession: lock screen / notification center controls
   useEffect(() => {
