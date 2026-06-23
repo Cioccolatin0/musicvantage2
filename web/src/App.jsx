@@ -67,11 +67,14 @@ function App() {
   const repeatRef = useRef('off');
   const playNextRef = useRef(() => {});
   const userRef = useRef(null);
+  const favoritesRef = useRef(favorites);
   const searchTimerRef = useRef(null);
   const bgAudioRef = useRef(null);
   const streamUrlCache = useRef(new Map());
+  const pendingTrackRef = useRef(null);
 
   useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { favoritesRef.current = favorites; }, [favorites]);
 
   useEffect(() => {
     try {
@@ -168,10 +171,11 @@ function App() {
   }, [currentTrack?.id, queue]);
 
   const playTrack = useCallback((track, trackList) => {
+    pendingTrackRef.current = track.id;
     if (trackList) setQueue(trackList);
     setCurrentTrack(track); setLoadingTrack(track.id); setPlaying(false);
     setLoadingStream(true); setStreamError(false); setCurrentTime(0); setDuration(0);
-    setLyrics(null); setLiked(favorites.some(t => t.id === track.id));
+    setLyrics(null); setLiked(favoritesRef.current.some(t => t.id === track.id));
     addRecentTrack(track);
     setRecentTracks(getRecentTracks());
 
@@ -187,6 +191,7 @@ function App() {
     // iOS lets native <audio> play in background if started by user gesture + MediaSession
     const cachedUrl = streamUrlCache.current.get(track.id);
     const startAudio = (url) => {
+      if (pendingTrackRef.current !== track.id) return;
       try {
         const bg = new Audio();
         bg.preload = 'auto';
@@ -212,11 +217,11 @@ function App() {
       getStreamUrl(track.id).then(url => {
         if (url) {
           streamUrlCache.current.set(track.id, url);
-          if (currentTrack?.id === track.id || !currentTrack) startAudio(url);
+          startAudio(url);
         } else { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
       }).catch(() => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); });
     }
-  }, [currentTrack?.id, volume]);
+  }, [volume]);
 
   const retryStream = useCallback(() => {
     if (!currentTrack) return;
