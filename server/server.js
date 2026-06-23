@@ -280,6 +280,11 @@ function proxyStream(upstream, req, res) {
   const contentType = upstream.headers['content-type'] || 'audio/mpeg';
   const clientSentRange = !!req.headers.range;
 
+  // Always set CORS headers for streaming!
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range');
+
   // If upstream returned 206, pass it through directly
   if (upstream.statusCode === 206) {
     const resHeaders = {
@@ -296,14 +301,17 @@ function proxyStream(upstream, req, res) {
   }
 
   // Upstream returned 200. If the client sent a Range header (Safari does this)
-  // and we have Content-Length, synthesize a 206 response so Safari is happy
+  // and we have Content-Length, handle it properly!
   if (clientSentRange && contentLength) {
     const totalSize = parseInt(contentLength, 10);
     const rangeHeader = req.headers.range;
     const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
     if (match && totalSize > 0) {
-      const start = parseInt(match[1], 10);
-      const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+      let start = parseInt(match[1], 10);
+      let end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
+      // Sanitize range
+      start = Math.max(0, Math.min(start, totalSize - 1));
+      end = Math.max(start, Math.min(end, totalSize - 1));
       const resHeaders = {
         'Content-Type': contentType,
         'Accept-Ranges': 'bytes',

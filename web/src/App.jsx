@@ -154,7 +154,7 @@ function App() {
   );
   const isSafariOrIOS = isSafariOrIOSRef.current;
 
-  // Pre-fetch stream URLs AND audio data for instant playback on iOS
+  // Pre-fetch stream URLs for ALL platforms
   const prefetchStreamUrl = useCallback((trackId) => {
     if (streamUrlCache.current.has(trackId)) {
       if (!isSafariOrIOS && !audioBlobCache.current.has(trackId)) {
@@ -269,6 +269,16 @@ function App() {
       try {
         const bg = document.getElementById('soundusic-bg-audio');
         if (!bg) { fallbackToYoutube(); return; }
+        
+        // Reset all listeners
+        bg.onended = null;
+        bg.onerror = null;
+        bg.onplay = null;
+        bg.onplaying = null;
+        bg.oncanplay = null;
+        bg.oncanplaythrough = null;
+        bg.onpause = null;
+        
         bg.preload = 'auto';
         bg.src = src;
         bg.volume = volume;
@@ -277,43 +287,56 @@ function App() {
           if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
           else { playNextRef.current(); }
         };
-        bg.onerror = () => {
+        bg.onerror = (e) => {
+          console.error('Audio error:', e);
           if (instanceId !== audioInstanceRef.current) return;
           fallbackToYoutube();
         };
 
         bgAudioRef.current = bg;
 
-        // Try to play immediately — this "unlocks" the audio element on iOS
-        // even if it rejects because media isn't loaded yet
-        const playPromise = bg.play();
-        if (playPromise) {
-          playPromise.then(() => {
-            if (instanceId !== audioInstanceRef.current) return;
-            setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
-          }).catch(() => {
-            if (instanceId !== audioInstanceRef.current) return;
-            // Safari: play() rejected because media not buffered yet
-            // Wait for canplaythrough and retry instead of falling back
-            bg.addEventListener('canplaythrough', function onCanPlay() {
-              bg.removeEventListener('canplaythrough', onCanPlay);
+        const attemptPlay = () => {
+          const playPromise = bg.play();
+          if (playPromise) {
+            playPromise.then(() => {
               if (instanceId !== audioInstanceRef.current) return;
-              bg.play().then(() => {
+              setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
+            }).catch((err) => {
+              console.warn('Play failed, waiting for canplay:', err);
+              if (instanceId !== audioInstanceRef.current) return;
+              // Wait for canplay or canplaythrough
+              const onCanPlay = () => {
+                bg.removeEventListener('canplay', onCanPlay);
+                bg.removeEventListener('canplaythrough', onCanPlay);
                 if (instanceId !== audioInstanceRef.current) return;
-                setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
-              }).catch(() => {
-                if (instanceId !== audioInstanceRef.current) return;
-                fallbackToYoutube();
-              });
+                bg.play().then(() => {
+                  if (instanceId !== audioInstanceRef.current) return;
+                  setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
+                }).catch(() => {
+                  if (instanceId !== audioInstanceRef.current) return;
+                  fallbackToYoutube();
+                });
+              };
+              bg.addEventListener('canplay', onCanPlay);
+              bg.addEventListener('canplaythrough', onCanPlay);
             });
-          });
-        }
+          }
+        };
+
+        // Try to play immediately
+        attemptPlay();
 
         setTimeout(() => {
           if (instanceId !== audioInstanceRef.current) return;
-          if (bg.paused && !ytFallbackRef.current) fallbackToYoutube();
-        }, 15000);
-      } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+          if (bg.paused && !ytFallbackRef.current) {
+            console.warn('Audio still paused after timeout, falling back');
+            fallbackToYoutube();
+          }
+        }, 20000); // Give it more time on slower connections
+      } catch (err) {
+        console.error('Error starting audio:', err);
+        setLoadingStream(false); setLoadingTrack(null); setStreamError(true);
+      }
     };
 
     const cachedUrl = streamUrlCache.current.get(track.id);
