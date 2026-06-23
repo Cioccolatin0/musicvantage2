@@ -69,7 +69,6 @@ function App() {
   const userRef = useRef(null);
   const searchTimerRef = useRef(null);
   const bgAudioRef = useRef(null);
-  const bgModeRef = useRef(false);
   const streamUrlCache = useRef(new Map());
 
   useEffect(() => { userRef.current = user; }, [user]);
@@ -169,31 +168,6 @@ function App() {
   }, [currentTrack?.id, queue]);
 
   const playTrack = useCallback((track, trackList) => {
-    const p = ytPlayerRef.current;
-    if (p && currentTrack?.id === track.id) {
-      try { p.seekTo(0); p.playVideo(); } catch {}
-      return;
-    }
-    if (p) {
-      try { p.loadVideoById(track.id); p.playVideo(); } catch {}
-    } else {
-      try {
-        ytPlayerRef.current = new YT.Player('yt-player', {
-          videoId: track.id, height: '1', width: '1',
-          playerVars: { modestbranding: 1, rel: 0, controls: 0, playsinline: 1, fs: 0, disablekb: 1 },
-          events: {
-            onReady: (e) => { try { e.target.playVideo(); } catch {} },
-            onStateChange: (e) => {
-              if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
-              else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
-              else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
-              else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
-            },
-            onError: () => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
-          }
-        });
-      } catch {}
-    }
     if (trackList) setQueue(trackList);
     setCurrentTrack(track); setLoadingTrack(track.id); setPlaying(false);
     setLoadingStream(true); setStreamError(false); setCurrentTime(0); setDuration(0);
@@ -201,30 +175,82 @@ function App() {
     addRecentTrack(track);
     setRecentTracks(getRecentTracks());
 
-    // iOS background audio: use cached URL to call play() during user gesture
+    // Pause YouTube player (music mode uses <audio> element natively)
+    const p = ytPlayerRef.current;
+    if (p) { try { p.pauseVideo(); } catch {} }
+
+    // Stop previous background audio
     const prevBg = bgAudioRef.current;
     if (prevBg) { try { prevBg.pause(); } catch {} bgAudioRef.current = null; }
+
+    // Start <audio> element as PRIMARY player (not muted!)
+    // iOS lets native <audio> play in background if started by user gesture + MediaSession
     const cachedUrl = streamUrlCache.current.get(track.id);
+    const startAudio = (url) => {
+      try {
+        const bg = new Audio();
+        bg.preload = 'auto';
+        bg.src = url;
+        bg.volume = volume;
+        bg.onended = () => {
+          if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
+          else { playNextRef.current(); }
+        };
+        bg.oncanplay = () => {
+          bgAudioRef.current = bg;
+          bg.play().then(() => {
+            setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
+          }).catch(() => {});
+        };
+        bg.onerror = () => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); };
+      } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+    };
+
+    if (cachedUrl) {
+      startAudio(cachedUrl);
+    } else {
+      getStreamUrl(track.id).then(url => {
+        if (url) {
+          streamUrlCache.current.set(track.id, url);
+          if (currentTrack?.id === track.id || !currentTrack) startAudio(url);
+        } else { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+      }).catch(() => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); });
+    }
+  }, [currentTrack?.id, volume]);
+
+  const retryStream = useCallback(() => {
+    if (!currentTrack) return;
+    setStreamError(false); setLoadingStream(true);
+    const cachedUrl = streamUrlCache.current.get(currentTrack.id);
     if (cachedUrl) {
       try {
         const bg = new Audio(cachedUrl);
         bg.preload = 'auto';
-        bg.muted = true;
-        bg.play().then(() => { bgAudioRef.current = bg; }).catch(() => {});
-      } catch {}
+        bg.volume = volume;
+        bg.onended = () => { playNextRef.current(); };
+        bg.oncanplay = () => {
+          bgAudioRef.current = bg;
+          bg.play().then(() => { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); }).catch(() => {});
+        };
+        bg.onerror = () => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); };
+      } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
     } else {
-      // Fallback: fetch and cache for next time
-      getStreamUrl(track.id).then(url => {
-        if (url) streamUrlCache.current.set(track.id, url);
-      }).catch(() => {});
+      getStreamUrl(currentTrack.id).then(url => {
+        if (url) {
+          streamUrlCache.current.set(currentTrack.id, url);
+          const bg = new Audio(url);
+          bg.preload = 'auto';
+          bg.volume = volume;
+          bg.onended = () => { playNextRef.current(); };
+          bg.oncanplay = () => {
+            bgAudioRef.current = bg;
+            bg.play().then(() => { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); }).catch(() => {});
+          };
+          bg.onerror = () => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); };
+        } else { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+      }).catch(() => { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); });
     }
-  }, [currentTrack?.id]);
-
-  const retryStream = useCallback(() => {
-    if (!currentTrack || !ytPlayerRef.current) return;
-    setStreamError(false); setLoadingStream(true);
-    try { ytPlayerRef.current.loadVideoById(currentTrack.id); ytPlayerRef.current.playVideo(); } catch { setLoadingStream(false); }
-  }, [currentTrack]);
+  }, [currentTrack, volume]);
 
   useEffect(() => {
     if (window.YT && window.YT.Player) { setYoutubeReady(true); return; }
@@ -269,7 +295,16 @@ function App() {
   useEffect(() => {
     if (!playing) return;
     const interval = setInterval(() => {
-      try { const p = ytPlayerRef.current; if (p && p.getCurrentTime) { setCurrentTime(p.getCurrentTime() || 0); setDuration(p.getDuration() || 0); } } catch {}
+      try {
+        const bg = bgAudioRef.current;
+        if (bg && bg.src && !bg.paused) {
+          setCurrentTime(bg.currentTime || 0);
+          setDuration(bg.duration || 0);
+        } else {
+          const p = ytPlayerRef.current;
+          if (p && p.getCurrentTime) { setCurrentTime(p.getCurrentTime() || 0); setDuration(p.getDuration() || 0); }
+        }
+      } catch {}
     }, 250);
     return () => clearInterval(interval);
   }, [playing, currentTrack?.id]);
@@ -281,9 +316,14 @@ function App() {
   }, [currentTrack?.id]);
 
   const togglePlay = () => {
-    const p = ytPlayerRef.current;
-    if (!p || loadingStream) return;
-    try { if (playing) p.pauseVideo(); else p.playVideo(); } catch {}
+    const bg = bgAudioRef.current;
+    if (bg && bg.src) {
+      try { if (playing) bg.pause(); else bg.play(); } catch {}
+    } else {
+      const p = ytPlayerRef.current;
+      if (!p || loadingStream) return;
+      try { if (playing) p.pauseVideo(); else p.playVideo(); } catch {}
+    }
   };
 
   const playNext = useCallback(() => {
@@ -298,14 +338,30 @@ function App() {
   };
 
   const handleProgressClick = (e) => {
-    const p = ytPlayerRef.current; const bar = progressRef.current;
-    if (!p || !bar) return;
-    try { const rect = bar.getBoundingClientRect(); const pct = (e.clientX - rect.left) / rect.width; p.seekTo(pct * (p.getDuration() || 0), true); } catch {}
+    const bar = progressRef.current;
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    const dur = bgAudioRef.current?.duration || ytPlayerRef.current?.getDuration?.() || 0;
+    const seekTo = pct * dur;
+    try {
+      if (bgAudioRef.current && bgAudioRef.current.src && !bgAudioRef.current.paused) {
+        bgAudioRef.current.currentTime = seekTo;
+      } else {
+        const p = ytPlayerRef.current;
+        if (p) p.seekTo(seekTo, true);
+      }
+    } catch {}
   };
 
   useEffect(() => { repeatRef.current = repeat; }, [repeat]);
   useEffect(() => { playNextRef.current = playNext; }, [playNext]);
-  useEffect(() => { try { if (ytPlayerRef.current?.setVolume) ytPlayerRef.current.setVolume(volume * 100); } catch {} }, [volume]);
+  useEffect(() => {
+    try {
+      if (bgAudioRef.current) bgAudioRef.current.volume = volume;
+      if (ytPlayerRef.current?.setVolume) ytPlayerRef.current.setVolume(volume * 100);
+    } catch {}
+  }, [volume]);
 
   const togglePlayRef = useRef(togglePlay);
   useEffect(() => { togglePlayRef.current = togglePlay; }, [togglePlay]);
@@ -319,40 +375,14 @@ function App() {
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
 
-  // Background playback: unmute audio on background, mute on foreground
+  // No visibilitychange handler needed — native <audio> plays in background on iOS
+  // Just cleanup on unmount
   useEffect(() => {
-    const onVisibility = () => {
-      const bg = bgAudioRef.current;
-      const p = ytPlayerRef.current;
-      if (!bg || !bg.src || bg.paused) return;
-
-      if (document.hidden) {
-        // Going to background: pause YouTube, unmute bg audio
-        const pos = p?.getCurrentTime?.() || 0;
-        try { p?.pauseVideo?.(); } catch {}
-        bg.currentTime = pos;
-        bg.muted = false;
-        bg.volume = volume;
-        bg.play().then(() => { bgModeRef.current = true; }).catch(() => {});
-      } else if (bgModeRef.current) {
-        // Coming back to foreground: pause bg audio, resume YouTube
-        const pos = bg.currentTime || 0;
-        bg.pause();
-        bg.muted = true;
-        bgModeRef.current = false;
-        if (p) {
-          try { p.seekTo(pos, true); p.playVideo(); } catch {}
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
       const bg = bgAudioRef.current;
       if (bg) { bg.pause(); bg.src = ''; }
     };
-  }, [volume]);
+  }, []);
 
   // MediaSession: lock screen / notification center controls
   useEffect(() => {
