@@ -200,7 +200,7 @@ function App() {
   const audioInstanceRef = useRef(0);
 
   const stopCurrentAudio = useCallback(() => {
-    const prevBg = bgAudioRef.current;
+    const prevBg = document.getElementById('soundusic-bg-audio');
     if (prevBg) {
       try {
         prevBg.onended = null;
@@ -208,16 +208,9 @@ function App() {
         prevBg.onplay = null;
         prevBg.oncanplay = null;
         prevBg.pause();
-        prevBg.src = '';
+        prevBg.removeAttribute('src');
         prevBg.load();
-        if (prevBg.parentNode) {
-          prevBg.parentNode.removeChild(prevBg);
-        }
       } catch {}
-    }
-    const existing = document.getElementById('soundusic-bg-audio');
-    if (existing && existing.parentNode) {
-      try { existing.parentNode.removeChild(existing); } catch {}
     }
     bgAudioRef.current = null;
   }, []);
@@ -274,13 +267,11 @@ function App() {
       const blobUrl = useBlob ? audioBlobCache.current.get(track.id) : null;
       const src = blobUrl || url;
       try {
-        const bg = new Audio();
-        bg.id = 'soundusic-bg-audio';
+        const bg = document.getElementById('soundusic-bg-audio');
+        if (!bg) { fallbackToYoutube(); return; }
         bg.preload = 'auto';
         bg.src = src;
         bg.volume = volume;
-        bg.setAttribute('playsinline', '');
-        bg.style.display = 'none';
         bg.onended = () => {
           if (instanceId !== audioInstanceRef.current) return;
           if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
@@ -291,8 +282,6 @@ function App() {
           fallbackToYoutube();
         };
 
-        // Append to DOM to prevent iOS Safari/PWA from suspending background playback
-        document.body.appendChild(bg);
         bgAudioRef.current = bg;
 
         // Try to play immediately — this "unlocks" the audio element on iOS
@@ -351,14 +340,10 @@ function App() {
     const blobUrl = useBlob ? audioBlobCache.current.get(currentTrack.id) : null;
     const playBg = (url) => {
       if (pendingTrackRef.current !== currentTrack.id) return;
-      const bg = new Audio();
-      bg.id = 'soundusic-bg-audio';
+      const bg = document.getElementById('soundusic-bg-audio');
+      if (!bg) return;
       bg.preload = 'auto'; bg.src = blobUrl || url; bg.volume = volume;
-      bg.setAttribute('playsinline', '');
-      bg.style.display = 'none';
 
-      // Append to DOM to prevent iOS Safari/PWA from suspending background playback
-      document.body.appendChild(bg);
       bgAudioRef.current = bg;
       bg.onended = () => {
         if (instanceId !== audioInstanceRef.current) return;
@@ -715,6 +700,7 @@ function App() {
   return (
     <>
     <div className="app">
+      <audio id="soundusic-bg-audio" playsInline style={{ display: 'none' }} />
       {/* Mobile menu overlay */}
       {!sidebarCollapsed && window.innerWidth <= 768 && (
         <div className="modal-overlay" onClick={() => setSidebarCollapsed(true)} style={{ zIndex: 49 }} />
