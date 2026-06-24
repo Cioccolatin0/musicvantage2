@@ -64,7 +64,12 @@ function App() {
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
   const [configReady, setConfigReady] = useState(false);
 
-  useEffect(() => { configPromise.then(() => setConfigReady(true)).catch(() => setConfigReady(true)); }, []);
+  useEffect(() => {
+    configPromise.then(() => setConfigReady(true)).catch(() => setConfigReady(true));
+    // Clear stream cache on startup to avoid 404 errors
+    streamUrlCache.current.clear();
+    audioBlobCache.current.clear();
+  }, []);
 
   const ytPlayerRef = useRef(null);
   const progressRef = useRef(null);
@@ -289,27 +294,14 @@ function App() {
         bg.src = src;
         bg.volume = volume;
         bg.onended = () => {
-          if (instanceId !== audioInstanceRef.current) return;
-          if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
-          else { playNextRef.current(); }
-        };
-        bg.onplay = () => {
-          console.log('Audio playing');
-          if ('mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = 'playing';
-          }
-        };
-        bg.onpause = () => {
-          console.log('Audio paused');
-          if ('mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = 'paused';
-          }
-        };
-        bg.onerror = (e) => {
-          console.error('Audio error:', e);
-          if (instanceId !== audioInstanceRef.current) return;
-          fallbackToYoutube();
-        };
+        if (instanceId !== audioInstanceRef.current) return;
+        if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
+        else { playNextRef.current(); }
+      };
+      bg.onerror = () => {
+        if (instanceId !== audioInstanceRef.current) return;
+        fallbackToYoutube();
+      };
 
         bgAudioRef.current = bg;
 
@@ -406,6 +398,43 @@ function App() {
     ytFallbackRef.current = false;
     pendingTrackRef.current = currentTrack.id;
     stopCurrentAudio();
+
+    // On iOS/Safari, use YouTube player directly
+    if (isSafariOrIOS) {
+      const fallbackToYoutube = () => {
+        if (instanceId !== audioInstanceRef.current) return;
+        ytFallbackRef.current = true;
+        bgAudioRef.current = null;
+        const p = ytPlayerRef.current;
+        const startPlayer = (player) => {
+          try { player.loadVideoById(currentTrack.id); player.playVideo(); } catch {}
+        };
+        if (p) {
+          startPlayer(p);
+        } else {
+          try {
+            ytPlayerRef.current = new YT.Player('yt-player', {
+              videoId: currentTrack.id, height: '1', width: '1',
+              playerVars: { modestbranding: 1, rel: 0, controls: 0, playsinline: 1, fs: 0, disablekb: 1 },
+              events: {
+                  onReady: (e) => { try { e.target.playVideo(); } catch {} },
+                  onStateChange: (e) => {
+                    if (instanceId !== audioInstanceRef.current) return;
+                    if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
+                    else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
+                    else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
+                    else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
+                  },
+                  onError: () => { if (instanceId !== audioInstanceRef.current) return; setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+                }
+            });
+          } catch { setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
+        }
+      };
+      fallbackToYoutube();
+      return;
+    }
+
     const cachedUrl = streamUrlCache.current.get(currentTrack.id);
     const useBlob = !isSafariOrIOS && audioBlobCache.current.has(currentTrack.id);
     const blobUrl = useBlob ? audioBlobCache.current.get(currentTrack.id) : null;
