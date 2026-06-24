@@ -325,7 +325,9 @@ async function getStreamUrl(videoId) {
       if (audio.url) {
         url = audio.url;
       } else if (audio.decipher) {
-        url = audio.decipher(yt.session.player);
+        try {
+          url = audio.decipher(yt.session.player);
+        } catch {}
       }
       if (url) {
         ytmCacheSet(cacheKey, url);
@@ -333,7 +335,10 @@ async function getStreamUrl(videoId) {
       }
     }
     return null;
-  } catch { return null; }
+  } catch (err) {
+    console.error('getStreamUrl error for video', videoId, err);
+    return null;
+  }
 }
 
 async function getArtistInfo(artistId) {
