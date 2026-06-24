@@ -6,7 +6,7 @@ export default function PlayerBar({
   currentTrack, playing, loadingStream, streamError, currentTime, duration, shuffle, repeat,
   togglePlay, playPrev, playNext, retryStream, handleProgressClick, volume, setVolume,
   onToggleShuffle, onToggleRepeat, onOpenLyrics, onOpenQueue, onOpenPlaylists, liked, onToggleLike,
-  playMode, onToggleMode, lyrics, showLyrics, setShowLyrics
+  playMode, onToggleMode, lyrics, showLyrics, setShowLyrics, onExpand
 }) {
   const progressRef = useRef(null);
   const volumeRef = useRef(null);
@@ -72,13 +72,13 @@ export default function PlayerBar({
       <div className={`player-loading-bar ${loadingStream ? 'active' : ''}`} />
       <div className="player-glass" />
       <div className="player-inner">
-        <div className="player-section left">
+        <div className="player-section left" onClick={onExpand} style={{ cursor: 'pointer' }}>
           <img className="player-thumb" src={currentTrack.thumbnail} alt={currentTrack.title} />
           <div className="player-track-info">
             <h4>{currentTrack.title}</h4>
             <p>{currentTrack.artist}</p>
           </div>
-          <button className="icon-btn" onClick={onToggleLike} title="Like">
+          <button className="icon-btn" onClick={(e) => { e.stopPropagation(); onToggleLike(); }} title="Like">
             {liked ? <IconHeartFilled size={18} /> : <IconHeart size={18} />}
           </button>
         </div>

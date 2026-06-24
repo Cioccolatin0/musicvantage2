@@ -17,6 +17,7 @@ import Friends from './components/Friends';
 import Notifications from './components/Notifications';
 import JamSession from './components/JamSession';
 import MobileNav from './components/MobileNav';
+import ExpandedPlayer from './ExpandedPlayer';
 import { IconSearch, IconAdmin, IconImport, IconHome, IconChat, IconFriends, IconJam, IconPlaylist, IconQueue, IconBell, IconUser, IconMusicNote, IconDownload } from './Icons';
 
 function App() {
@@ -60,12 +61,14 @@ function App() {
   const [downloadingIds, setDownloadingIds] = useState(new Set());
   const [favorites, setFavorites] = useState(() => getFavorites());
   const [recommended, setRecommended] = useState([]);
+  const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
 
   const ytPlayerRef = useRef(null);
   const progressRef = useRef(null);
   const startedRef = useRef(false);
   const repeatRef = useRef('off');
   const playNextRef = useRef(() => {});
+  const playPrevRef = useRef(() => {});
   const userRef = useRef(null);
   const favoritesRef = useRef(favorites);
   const searchTimerRef = useRef(null);
@@ -181,55 +184,6 @@ function App() {
     }).catch(() => {});
   }, [isSafariOrIOS]);
 
-  // Setup Audio element and background playback
-  useEffect(() => {
-    const audioEl = document.getElementById('soundusic-bg-audio');
-    if (!audioEl) return;
-
-    // Update MediaSession for background playback controls
-    const setupMediaSession = () => {
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler('play', () => {
-          togglePlay();
-        });
-        navigator.mediaSession.setActionHandler('pause', () => {
-          togglePlay();
-        });
-        navigator.mediaSession.setActionHandler('previoustrack', () => {
-          playPrev();
-        });
-        navigator.mediaSession.setActionHandler('nexttrack', () => {
-          const next = getNextTrack();
-          if (next) playTrack(next, queue);
-        });
-      }
-    };
-
-    setupMediaSession();
-
-    return () => {
-      // Cleanup
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler('play', null);
-        navigator.mediaSession.setActionHandler('pause', null);
-        navigator.mediaSession.setActionHandler('previoustrack', null);
-        navigator.mediaSession.setActionHandler('nexttrack', null);
-      }
-    };
-  }, [togglePlay, playPrev, playTrack, getNextTrack, queue, currentTrack]);
-
-  // Update MediaSession metadata when track changes
-  useEffect(() => {
-    if ('mediaSession' in navigator && currentTrack) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: currentTrack.title,
-        artist: currentTrack.artist,
-        artwork: currentTrack.thumbnail ? [{ src: currentTrack.thumbnail, sizes: '512x512', type: 'image/jpeg' }] : []
-      });
-    }
-  }, [currentTrack]);
-
-  // Pre-fetch top 3 tracks when results change
   useEffect(() => {
     if (!results) return;
     const tracks = results.tracks || [];
@@ -592,6 +546,7 @@ function App() {
 
   useEffect(() => { repeatRef.current = repeat; }, [repeat]);
   useEffect(() => { playNextRef.current = playNext; }, [playNext]);
+  useEffect(() => { playPrevRef.current = playPrev; }, [playPrev]);
   useEffect(() => {
     try {
       if (bgAudioRef.current) bgAudioRef.current.volume = volume;
@@ -664,8 +619,8 @@ function App() {
     });
     navigator.mediaSession.setActionHandler('play', () => { togglePlayRef.current(); });
     navigator.mediaSession.setActionHandler('pause', () => { togglePlayRef.current(); });
-    navigator.mediaSession.setActionHandler('previoustrack', () => { playPrev(); });
-    navigator.mediaSession.setActionHandler('nexttrack', () => { playNext(); });
+    navigator.mediaSession.setActionHandler('previoustrack', () => { playPrevRef.current(); });
+    navigator.mediaSession.setActionHandler('nexttrack', () => { playNextRef.current(); });
   }, [currentTrack?.id, currentTrack?.title, currentTrack?.artist, currentTrack?.thumbnail]);
 
   // Sync MediaSession playback state with React playing state
@@ -1272,6 +1227,32 @@ function App() {
           lyrics={lyrics}
           showLyrics={showLyrics}
           setShowLyrics={setShowLyrics}
+          onExpand={() => setShowExpandedPlayer(true)}
+        />
+      )}
+      
+      {showExpandedPlayer && currentTrack && (
+        <ExpandedPlayer
+          currentTrack={currentTrack}
+          playing={playing}
+          currentTime={currentTime}
+          duration={duration}
+          shuffle={shuffle}
+          repeat={repeat}
+          volume={volume}
+          liked={liked}
+          lyrics={lyrics}
+          showLyrics={showLyrics}
+          togglePlay={togglePlay}
+          playPrev={playPrev}
+          playNext={playNext}
+          onToggleShuffle={toggleShuffle}
+          onToggleRepeat={toggleRepeat}
+          onToggleLike={() => currentTrack && toggleFavorite(currentTrack)}
+          setShowLyrics={setShowLyrics}
+          handleProgressClick={handleProgressClick}
+          setVolume={setVolume}
+          onClose={() => setShowExpandedPlayer(false)}
         />
       )}
 
