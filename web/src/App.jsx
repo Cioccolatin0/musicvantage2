@@ -381,6 +381,12 @@ function App() {
       }
     };
 
+    // On iOS/Safari, use YouTube player directly for reliable background playback!
+    if (isSafariOrIOS) {
+      fallbackToYoutube();
+      return;
+    }
+
     const cachedUrl = streamUrlCache.current.get(track.id);
     if (cachedUrl) {
       startAudio(cachedUrl);
