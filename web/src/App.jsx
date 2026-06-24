@@ -37,7 +37,7 @@ function App() {
   const [repeat, setRepeat] = useState('off');
   const [volume, setVolume] = useState(0.7);
   const [liked, setLiked] = useState(false);
-  const [activeView, setActiveView] = useState('home');
+  const [activeView, setActiveView] = useState('search');
   const [showQueue, setShowQueue] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
   const [showPlaylists, setShowPlaylists] = useState(false);
@@ -68,6 +68,7 @@ function App() {
 
   const ytPlayerRef = useRef(null);
   const progressRef = useRef(null);
+  const searchInputRef = useRef(null);
   const startedRef = useRef(false);
   const repeatRef = useRef('off');
   const playNextRef = useRef(() => {});
@@ -781,7 +782,7 @@ function App() {
           <form className="search-form" onSubmit={handleSubmit}>
             <div className="search-wrap">
               <IconSearch size={16} />
-              <input type="text" placeholder="Search songs, albums, artists..." value={query} onChange={e => handleQueryChange(e.target.value)} />
+              <input ref={searchInputRef} type="text" placeholder="Search songs, albums, artists..." value={query} onChange={e => handleQueryChange(e.target.value)} />
             </div>
             <button type="submit">Search</button>
           </form>
@@ -966,7 +967,7 @@ function App() {
             </div>
           )}
 
-          {activeView === 'home' && (
+          {activeView === 'search' && (
             <>
               {!results && !loading && !error && (
                 <>
@@ -1194,6 +1195,84 @@ function App() {
               )}
             </>
           )}
+
+          {activeView === 'library' && (
+            <div className="tab-view">
+              <section className="section">
+                <h3>Continue listening</h3>
+                {recentTracks.length === 0 ? (
+                  <p className="panel-empty">No recent tracks</p>
+                ) : (
+                  <div className="track-list">
+                    {recentTracks.map((t, i) => {
+                      const isActive = currentTrack?.id === t.id;
+                      return (
+                        <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, recentTracks)}>
+                          <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                          <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                          <span className="track-duration">{formatDuration(t.duration)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <section className="section">
+                <h3>Favorites</h3>
+                {favorites.length === 0 ? (
+                  <p className="panel-empty">No favorite tracks yet</p>
+                ) : (
+                  <div className="track-list">
+                    {favorites.map((t, i) => {
+                      const isActive = currentTrack?.id === t.id;
+                      return (
+                        <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, favorites)}>
+                          <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                          <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                          <span className="track-duration">{formatDuration(t.duration)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              <section className="section">
+                <h3>Downloads</h3>
+                {downloads.length === 0 ? (
+                  <p className="panel-empty">No downloaded tracks</p>
+                ) : (
+                  <div className="track-list">
+                    {downloads.map((t, i) => {
+                      const isActive = currentTrack?.id === t.id;
+                      return (
+                        <div key={t.id} className={`track-item ${isActive ? 'active' : ''}`} onClick={() => playTrack(t, downloads)}>
+                          <img src={t.thumbnail} alt={t.title} loading="lazy" />
+                          <div className="track-info"><h4>{t.title}</h4><p>{t.artist}</p></div>
+                          <span className="track-duration">{formatDuration(t.duration)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {activeView === 'chat' && (
+            showChat ? (
+              <></>
+            ) : (
+              user ? (
+                <div style={{ textAlign: 'center', padding: 60 }}>
+                  <button className="btn-primary" onClick={() => setShowChat(true)}>Open Chat</button>
+                </div>
+              ) : (
+                <p className="panel-empty">Sign in to use chat</p>
+              )
+            )
+          )}
         </main>
       </div>
 
@@ -1201,7 +1280,15 @@ function App() {
         <p>MusicVantage 2026 &mdash; <a href="mailto:edoardobevilacqua78@gmail.com">edoardobevilacqua78@gmail.com</a></p>
       </footer>
 
-      <MobileNav activeView={activeView} onNavigate={handleNavigate} onOpenSearch={() => {}} notifCount={notifs.length} />
+      <MobileNav 
+        activeView={activeView} 
+        onNavigate={handleNavigate} 
+        onOpenSearch={() => { 
+          setActiveView('search');
+          setTimeout(() => searchInputRef.current?.focus(), 100);
+        }} 
+        notifCount={notifs.length} 
+      />
 
       {currentTrack && (
         <PlayerBar
