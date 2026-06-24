@@ -293,6 +293,18 @@ function App() {
           if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
           else { playNextRef.current(); }
         };
+        bg.onplay = () => {
+          console.log('Audio playing');
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing';
+          }
+        };
+        bg.onpause = () => {
+          console.log('Audio paused');
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'paused';
+          }
+        };
         bg.onerror = (e) => {
           console.error('Audio error:', e);
           if (instanceId !== audioInstanceRef.current) return;
