@@ -181,6 +181,54 @@ function App() {
     }).catch(() => {});
   }, [isSafariOrIOS]);
 
+  // Setup Audio element and background playback
+  useEffect(() => {
+    const audioEl = document.getElementById('soundusic-bg-audio');
+    if (!audioEl) return;
+
+    // Update MediaSession for background playback controls
+    const setupMediaSession = () => {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', () => {
+          togglePlay();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          togglePlay();
+        });
+        navigator.mediaSession.setActionHandler('previoustrack', () => {
+          playPrev();
+        });
+        navigator.mediaSession.setActionHandler('nexttrack', () => {
+          const next = getNextTrack();
+          if (next) playTrack(next, queue);
+        });
+      }
+    };
+
+    setupMediaSession();
+
+    return () => {
+      // Cleanup
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', null);
+        navigator.mediaSession.setActionHandler('pause', null);
+        navigator.mediaSession.setActionHandler('previoustrack', null);
+        navigator.mediaSession.setActionHandler('nexttrack', null);
+      }
+    };
+  }, [togglePlay, playPrev, playTrack, getNextTrack, queue, currentTrack]);
+
+  // Update MediaSession metadata when track changes
+  useEffect(() => {
+    if ('mediaSession' in navigator && currentTrack) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        artwork: currentTrack.thumbnail ? [{ src: currentTrack.thumbnail, sizes: '512x512', type: 'image/jpeg' }] : []
+      });
+    }
+  }, [currentTrack]);
+
   // Pre-fetch top 3 tracks when results change
   useEffect(() => {
     if (!results) return;
