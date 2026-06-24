@@ -42,7 +42,7 @@ function App() {
   const [showLyrics, setShowLyrics] = useState(false);
   const [showPlaylists, setShowPlaylists] = useState(false);
   const [playlists, setPlaylists] = useState([]);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth <= 768);
   const [loadingTrack, setLoadingTrack] = useState(null);
   const [adminLoggedIn, setAdminLoggedIn] = useState(false);
   const [playMode, setPlayMode] = useState('music');
@@ -613,6 +613,17 @@ function App() {
     };
   }, [stopCurrentAudio]);
 
+  // Handle resize to keep sidebar collapsed on mobile
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth <= 768) {
+        setSidebarCollapsed(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // MediaSession: lock screen / notification center controls
   useEffect(() => {
     if (!('mediaSession' in navigator) || !currentTrack) return;
@@ -637,7 +648,7 @@ function App() {
   const toggleShuffle = () => setShuffle(s => !s);
   const toggleRepeat = () => setRepeat(r => r === 'off' ? 'all' : r === 'all' ? 'one' : 'off');
   const removeFromQueue = (idx) => setQueue(q => q.filter((_, i) => i !== idx));
-  const handleNavigate = (view) => { setActiveView(view); };
+  const handleNavigate = (view) => { setActiveView(view); if (window.innerWidth <= 768) setSidebarCollapsed(true); };
   const handleArtistClick = async (artist) => {
     setArtistLoading(true); setArtistInfo(null); setActiveView('home');
     try {
