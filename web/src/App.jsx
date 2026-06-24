@@ -301,12 +301,31 @@ function App() {
 
         bgAudioRef.current = bg;
 
+        // Setup MediaSession for background playback
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: track.title,
+            artist: track.artist,
+            artwork: track.thumbnail ? [{ src: track.thumbnail, sizes: '480x480', type: 'image/jpeg' }] : []
+          });
+          navigator.mediaSession.setActionHandler('play', () => { togglePlayRef.current(); });
+          navigator.mediaSession.setActionHandler('pause', () => { togglePlayRef.current(); });
+          navigator.mediaSession.setActionHandler('previoustrack', () => { playPrevRef.current(); });
+          navigator.mediaSession.setActionHandler('nexttrack', () => { playNextRef.current(); });
+        }
+
         const attemptPlay = () => {
           const playPromise = bg.play();
           if (playPromise) {
             playPromise.then(() => {
               if (instanceId !== audioInstanceRef.current) return;
-              setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
+              setPlaying(true); 
+              setLoadingStream(false); 
+              setLoadingTrack(null);
+              // Ensure MediaSession playback state is updated
+              if ('mediaSession' in navigator) {
+                navigator.mediaSession.playbackState = 'playing';
+              }
             }).catch((err) => {
               console.warn('Play failed, waiting for canplay:', err);
               if (instanceId !== audioInstanceRef.current) return;
@@ -317,7 +336,12 @@ function App() {
                 if (instanceId !== audioInstanceRef.current) return;
                 bg.play().then(() => {
                   if (instanceId !== audioInstanceRef.current) return;
-                  setPlaying(true); setLoadingStream(false); setLoadingTrack(null);
+                  setPlaying(true); 
+                  setLoadingStream(false); 
+                  setLoadingTrack(null);
+                  if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'playing';
+                  }
                 }).catch(() => {
                   if (instanceId !== audioInstanceRef.current) return;
                   fallbackToYoutube();
