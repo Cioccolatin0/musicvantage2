@@ -11,6 +11,7 @@ async function fetchConfig() {
   } catch { apiKey = ''; }
 }
 configPromise = fetchConfig();
+export { configPromise };
 
 function addKey(url) {
   if (!apiKey) return url;

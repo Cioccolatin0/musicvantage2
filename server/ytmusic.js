@@ -300,12 +300,7 @@ async function getStreamUrl(videoId) {
     const sd = info.streaming_data;
     if (!sd) return null;
     const formats = [...(sd.adaptive_formats || []), ...(sd.formats || [])];
-    // Prefer audio/mp4 with aac codec for Safari compatibility
-    let audio = formats.find(f => f.mime_type && f.mime_type.includes('audio/mp4') && f.mime_type.includes('codecs="mp4a'));
-    if (!audio) {
-      audio = formats.find(f => f.mime_type && f.mime_type.startsWith('audio/mp4'));
-    }
-    // Fallback only to webm if absolutely necessary (but Safari doesn't like it)
+    let audio = formats.find(f => f.mime_type && f.mime_type.startsWith('audio/mp4'));
     if (!audio) {
       audio = formats.find(f => f.mime_type && f.mime_type.startsWith('audio/'));
     }

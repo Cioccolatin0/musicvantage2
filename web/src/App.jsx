@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket, getStreamUrl, getStreamUrlSync, downloadAudioBlob } from './api';
+import { search, getLyrics, getArtistInfo, getRelatedTracks, socialRegister, socialLogin, getNotifications as fetchNotifs, getSocket, getStreamUrl, getStreamUrlSync, downloadAudioBlob, configPromise } from './api';
 import { formatDuration } from './utils';
 import { getCachedSearch, setCachedSearch, getRecentTracks, addRecentTrack, getDownloads, addDownload, removeDownload, isDownloaded, saveAudioBlob, getAudioUrl } from './cache';
 
@@ -62,6 +62,9 @@ function App() {
   const [favorites, setFavorites] = useState(() => getFavorites());
   const [recommended, setRecommended] = useState([]);
   const [showExpandedPlayer, setShowExpandedPlayer] = useState(false);
+  const [configReady, setConfigReady] = useState(false);
+
+  useEffect(() => { configPromise.then(() => setConfigReady(true)).catch(() => setConfigReady(true)); }, []);
 
   const ytPlayerRef = useRef(null);
   const progressRef = useRef(null);
@@ -725,6 +728,8 @@ function App() {
   const variations = results?.variations || [];
   const relatedTracks = results?.relatedTracks || [];
   const similarTracks = results?.similarTracks || [];
+
+  if (!configReady) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#888', fontSize: 14 }}>Loading...</div>;
 
   return (
     <>
