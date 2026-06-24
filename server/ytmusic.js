@@ -300,33 +300,19 @@ async function getStreamUrl(videoId) {
     const sd = info.streaming_data;
     if (!sd) return null;
     const formats = [...(sd.adaptive_formats || []), ...(sd.formats || [])];
-    // Priorità 1: audio/mp4 con codec AAC (obbligatorio per Safari/iOS)
-    let audio = formats.find(f => 
-      f.mime_type && 
-      f.mime_type.startsWith('audio/mp4') && 
-      f.mime_type.includes('codecs="mp4a')
-    );
-    // Priorità 2: qualsiasi audio/mp4
+    let audio = formats.find(f => f.mime_type && f.mime_type.startsWith('audio/mp4'));
     if (!audio) {
-      audio = formats.find(f => 
-        f.mime_type && 
-        f.mime_type.startsWith('audio/mp4')
-      );
+      audio = formats.find(f => f.mime_type && f.mime_type.startsWith('audio/'));
     }
-    // Priorità 3: qualsiasi formato audio (ultima spiaggia)
-    if (!audio) {
-      audio = formats.find(f => 
-        f.mime_type && 
-        f.mime_type.startsWith('audio/')
-      );
+    if (audio && audio.url) {
+      ytmCacheSet(cacheKey, audio.url);
+      return audio.url;
     }
-    if (audio) {
-      let url = null;
-      if (audio.url) url = audio.url;
-      else if (audio.decipher) url = audio.decipher(yt.session.player);
-      if (url) {
-        ytmCacheSet(cacheKey, url);
-        return url;
+    if (audio && audio.decipher) {
+      const deciphered = audio.decipher(yt.session.player);
+      if (deciphered) {
+        ytmCacheSet(cacheKey, deciphered);
+        return deciphered;
       }
     }
     return null;
