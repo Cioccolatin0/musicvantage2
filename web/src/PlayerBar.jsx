@@ -15,50 +15,57 @@ export default function PlayerBar({
 
   const getBarPercentage = (e, ref) => {
     const rect = ref.current.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   };
 
   const handleProgressMouseDown = (e) => {
+    e.preventDefault();
     setIsDraggingProgress(true);
     const pct = getBarPercentage(e, progressRef);
     handleProgressClick(e, pct);
   };
 
   const handleVolumeMouseDown = (e) => {
+    e.preventDefault();
     setIsDraggingVolume(true);
     const pct = getBarPercentage(e, volumeRef);
     setVolume(pct);
   };
 
   useEffect(() => {
-    const handleMouseMove = (e) => {
+    const handleMove = (e) => {
       if (isDraggingProgress && progressRef.current) {
+        e.preventDefault();
         const pct = getBarPercentage(e, progressRef);
         handleProgressClick(e, pct);
       }
       if (isDraggingVolume && volumeRef.current) {
+        e.preventDefault();
         const pct = getBarPercentage(e, volumeRef);
         setVolume(pct);
       }
     };
 
-    const handleMouseUp = () => {
+    const handleEnd = () => {
       setIsDraggingProgress(false);
       setIsDraggingVolume(false);
     };
 
     if (isDraggingProgress || isDraggingVolume) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      window.addEventListener('touchmove', handleMouseMove, { passive: false });
-      window.addEventListener('touchend', handleMouseUp);
+      window.addEventListener('mousemove', handleMove, { passive: false });
+      window.addEventListener('mouseup', handleEnd);
+      window.addEventListener('touchmove', handleMove, { passive: false });
+      window.addEventListener('touchend', handleEnd);
+      window.addEventListener('touchcancel', handleEnd);
     }
 
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('touchmove', handleMouseMove);
-      window.removeEventListener('touchend', handleMouseUp);
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
+      window.removeEventListener('touchcancel', handleEnd);
     };
   }, [isDraggingProgress, isDraggingVolume, handleProgressClick, setVolume]);
 
