@@ -746,7 +746,6 @@ function App() {
   return (
     <>
     <div className="app">
-      <audio id="soundusic-bg-audio" playsInline style={{ display: 'none' }} />
       {/* Mobile menu overlay */}
       {!sidebarCollapsed && window.innerWidth <= 768 && (
         <div className="modal-overlay" onClick={() => setSidebarCollapsed(true)} style={{ zIndex: 49 }} />
