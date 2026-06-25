@@ -189,6 +189,14 @@ function App() {
             }
           }).catch(() => {});
         }
+        // iOS: pre-load the audio element so play() succeeds within gesture
+        if (isSafariOrIOS) {
+          const bg = document.getElementById('soundusic-bg-audio');
+          if (bg && (!bgAudioRef.current || bg.paused)) {
+            bg.preload = 'auto';
+            bg.src = url;
+          }
+        }
       }
     }).catch(() => {});
   }, [isSafariOrIOS]);
@@ -219,8 +227,6 @@ function App() {
         prevBg.onplay = null;
         prevBg.oncanplay = null;
         prevBg.pause();
-        prevBg.removeAttribute('src');
-        prevBg.load();
       } catch {}
     }
     bgAudioRef.current = null;
@@ -244,6 +250,18 @@ function App() {
       if (ytFallbackRef.current) return;
       ytFallbackRef.current = true;
       bgAudioRef.current = null;
+      // Setup MediaSession for YouTube player too
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: track.title,
+          artist: track.artist,
+          artwork: track.thumbnail ? [{ src: track.thumbnail, sizes: '480x480', type: 'image/jpeg' }] : []
+        });
+        navigator.mediaSession.setActionHandler('play', () => { togglePlayRef.current(); });
+        navigator.mediaSession.setActionHandler('pause', () => { togglePlayRef.current(); });
+        navigator.mediaSession.setActionHandler('previoustrack', () => { playPrevRef.current(); });
+        navigator.mediaSession.setActionHandler('nexttrack', () => { playNextRef.current(); });
+      }
       const p = ytPlayerRef.current;
       const tid = trackId || track.id;
       const startPlayer = (player) => {
@@ -260,9 +278,28 @@ function App() {
               onReady: (e) => { try { e.target.playVideo(); } catch {} },
               onStateChange: (e) => {
                 if (instanceId !== audioInstanceRef.current) return;
-                if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
-                else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
-                else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
+                if (e.data === YT.PlayerState.PLAYING) { 
+                  setPlaying(true); 
+                  setLoadingStream(false); 
+                  setLoadingTrack(null); 
+                  setStreamError(false); 
+                  if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'playing';
+                  }
+                }
+                else if (e.data === YT.PlayerState.PAUSED) { 
+                  setPlaying(false); 
+                  if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'paused';
+                  }
+                }
+                else if (e.data === YT.PlayerState.ENDED) { 
+                  setPlaying(false); 
+                  if ('mediaSession' in navigator) {
+                    navigator.mediaSession.playbackState = 'paused';
+                  }
+                  if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } 
+                }
                 else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
               },
               onError: () => { if (instanceId !== audioInstanceRef.current) return; setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
@@ -290,9 +327,13 @@ function App() {
         bg.oncanplaythrough = null;
         bg.onpause = null;
         
-        bg.preload = 'auto';
-        bg.src = src;
         bg.volume = volume;
+        // On iOS, if bg.src is already set to the target URL (from preload),
+        // don't reset it — just play. The audio data may already be buffered.
+        if (!isSafariOrIOS || bg.src !== src) {
+          bg.preload = 'auto';
+          bg.src = src;
+        }
         bg.onended = () => {
         if (instanceId !== audioInstanceRef.current) return;
         if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
@@ -405,6 +446,18 @@ function App() {
         if (instanceId !== audioInstanceRef.current) return;
         ytFallbackRef.current = true;
         bgAudioRef.current = null;
+        // Setup MediaSession for YouTube player too
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: currentTrack.title,
+            artist: currentTrack.artist,
+            artwork: currentTrack.thumbnail ? [{ src: currentTrack.thumbnail, sizes: '480x480', type: 'image/jpeg' }] : []
+          });
+          navigator.mediaSession.setActionHandler('play', () => { togglePlayRef.current(); });
+          navigator.mediaSession.setActionHandler('pause', () => { togglePlayRef.current(); });
+          navigator.mediaSession.setActionHandler('previoustrack', () => { playPrevRef.current(); });
+          navigator.mediaSession.setActionHandler('nexttrack', () => { playNextRef.current(); });
+        }
         const p = ytPlayerRef.current;
         const startPlayer = (player) => {
           try { player.loadVideoById(currentTrack.id); player.playVideo(); } catch {}
@@ -420,9 +473,28 @@ function App() {
                   onReady: (e) => { try { e.target.playVideo(); } catch {} },
                   onStateChange: (e) => {
                     if (instanceId !== audioInstanceRef.current) return;
-                    if (e.data === YT.PlayerState.PLAYING) { setPlaying(true); setLoadingStream(false); setLoadingTrack(null); setStreamError(false); }
-                    else if (e.data === YT.PlayerState.PAUSED) { setPlaying(false); }
-                    else if (e.data === YT.PlayerState.ENDED) { setPlaying(false); if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } }
+                    if (e.data === YT.PlayerState.PLAYING) { 
+                      setPlaying(true); 
+                      setLoadingStream(false); 
+                      setLoadingTrack(null); 
+                      setStreamError(false); 
+                      if ('mediaSession' in navigator) {
+                        navigator.mediaSession.playbackState = 'playing';
+                      }
+                    }
+                    else if (e.data === YT.PlayerState.PAUSED) { 
+                      setPlaying(false); 
+                      if ('mediaSession' in navigator) {
+                        navigator.mediaSession.playbackState = 'paused';
+                      }
+                    }
+                    else if (e.data === YT.PlayerState.ENDED) { 
+                      setPlaying(false); 
+                      if ('mediaSession' in navigator) {
+                        navigator.mediaSession.playbackState = 'paused';
+                      }
+                      if (repeatRef.current === 'one') { try { e.target.seekTo(0); e.target.playVideo(); } catch {} } else { playNextRef.current(); } 
+                    }
                     else if (e.data === YT.PlayerState.CUED) { setLoadingStream(false); }
                   },
                   onError: () => { if (instanceId !== audioInstanceRef.current) return; setLoadingStream(false); setLoadingTrack(null); setStreamError(true); }
