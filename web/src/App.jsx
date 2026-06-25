@@ -744,6 +744,16 @@ function App() {
       audio.play().then(() => {
         silentKeeperRef.current = audio;
       }).catch(() => {});
+
+      // Register as a media player with iOS from the very first touch
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'Soundusic',
+          artist: 'Web Player',
+          artwork: [{ src: '/icon.png', sizes: '512x512', type: 'image/png' }]
+        });
+        navigator.mediaSession.playbackState = 'playing';
+      }
     } catch {}
   }, []);
 
