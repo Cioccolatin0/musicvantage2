@@ -82,6 +82,7 @@ function App() {
   const favoritesRef = useRef(favorites);
   const searchTimerRef = useRef(null);
   const bgAudioRef = useRef(null);
+  const silentKeeperRef = useRef(null);
   const streamUrlCache = useRef(new Map());
   const audioBlobCache = useRef(new Map());
   const pendingTrackRef = useRef(null);
@@ -414,12 +415,6 @@ function App() {
       }
     };
 
-    // On iOS/Safari, use YouTube player directly for reliable background playback!
-    if (isSafariOrIOS) {
-      fallbackToYoutube();
-      return;
-    }
-
     const cachedUrl = streamUrlCache.current.get(track.id);
     if (cachedUrl) {
       startAudio(cachedUrl);
@@ -714,6 +709,63 @@ function App() {
   }, []);
 
   // Background audio keepalive for iOS + cleanup on unmount
+  // Silent keeper: creates a silent WAV blob URL that loops continuously
+  // to prevent iOS from killing the audio session in background.
+  const silentKeeperBlobRef = useRef(null);
+  const startSilentKeeper = useCallback(() => {
+    if (silentKeeperRef.current && !silentKeeperRef.current.paused) return;
+    try {
+      // Generate silent WAV (1 second, 44100Hz, 16-bit mono)
+      const sampleRate = 44100;
+      const numSamples = sampleRate;
+      const buffer = new ArrayBuffer(44 + numSamples * 2);
+      const view = new DataView(buffer);
+      const w = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
+      w(0, 'RIFF');
+      view.setUint32(4, 36 + numSamples * 2, true);
+      w(8, 'WAVE');
+      w(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      w(36, 'data');
+      view.setUint32(40, numSamples * 2, true);
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      silentKeeperBlobRef.current = url;
+      const audio = new Audio();
+      audio.loop = true;
+      audio.volume = 0;
+      audio.src = url;
+      audio.play().then(() => {
+        silentKeeperRef.current = audio;
+      }).catch(() => {});
+    } catch {}
+  }, []);
+
+  // Start silent keeper on first user interaction (iOS needs gesture)
+  useEffect(() => {
+    const handler = () => { startSilentKeeper(); };
+    document.addEventListener('touchstart', handler);
+    document.addEventListener('click', handler);
+    return () => {
+      document.removeEventListener('touchstart', handler);
+      document.removeEventListener('click', handler);
+      if (silentKeeperRef.current) {
+        silentKeeperRef.current.pause();
+        silentKeeperRef.current = null;
+      }
+      if (silentKeeperBlobRef.current) {
+        URL.revokeObjectURL(silentKeeperBlobRef.current);
+        silentKeeperBlobRef.current = null;
+      }
+    };
+  }, [startSilentKeeper]);
+
   const audioCtxRef = useRef(null);
   useEffect(() => {
     const ensureAudioCtx = () => {
