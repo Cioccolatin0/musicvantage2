@@ -335,30 +335,36 @@ function App() {
           bg.preload = 'auto';
           bg.src = src;
         }
-        bg.onended = () => {
-        if (instanceId !== audioInstanceRef.current) return;
-        if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
-        else { playNextRef.current(); }
-      };
-      bg.onerror = () => {
-        if (instanceId !== audioInstanceRef.current) return;
-        fallbackToYoutube();
-      };
-
         bgAudioRef.current = bg;
 
-        // Setup MediaSession for background playback
+        // Setup MediaSession BEFORE play — iOS needs this early
         if ('mediaSession' in navigator) {
           navigator.mediaSession.metadata = new MediaMetadata({
             title: track.title,
             artist: track.artist,
-            artwork: track.thumbnail ? [{ src: track.thumbnail, sizes: '480x480', type: 'image/jpeg' }] : []
+            artwork: track.thumbnail ? [{ src: track.thumbnail, sizes: '480x480', type: 'image/jpeg' }] : [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
           });
           navigator.mediaSession.setActionHandler('play', () => { togglePlayRef.current(); });
           navigator.mediaSession.setActionHandler('pause', () => { togglePlayRef.current(); });
           navigator.mediaSession.setActionHandler('previoustrack', () => { playPrevRef.current(); });
           navigator.mediaSession.setActionHandler('nexttrack', () => { playNextRef.current(); });
         }
+
+        bg.onended = () => {
+          if (instanceId !== audioInstanceRef.current) return;
+          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
+          if (repeatRef.current === 'one') { bg.currentTime = 0; bg.play().catch(() => {}); }
+          else { playNextRef.current(); }
+        };
+        bg.onerror = () => {
+          if (instanceId !== audioInstanceRef.current) return;
+          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
+          fallbackToYoutube();
+        };
+        bg.onpause = () => {
+          if (instanceId !== audioInstanceRef.current) return;
+          if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+        };
 
         const attemptPlay = () => {
           const playPromise = bg.play();
@@ -717,7 +723,7 @@ function App() {
     try {
       // Generate silent WAV (1 second, 44100Hz, 16-bit mono)
       const sampleRate = 44100;
-      const numSamples = sampleRate;
+      const numSamples = sampleRate * 10;
       const buffer = new ArrayBuffer(44 + numSamples * 2);
       const view = new DataView(buffer);
       const w = (off, str) => { for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); };
@@ -750,7 +756,7 @@ function App() {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: 'Soundusic',
           artist: 'Web Player',
-          artwork: [{ src: '/icon.png', sizes: '512x512', type: 'image/png' }]
+          artwork: [{ src: '/icon-512.png', sizes: '512x512', type: 'image/png' }]
         });
         navigator.mediaSession.playbackState = 'playing';
       }
